@@ -1,0 +1,271 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: ai-service
+    component: backend
+    tier: service
+  annotations:
+    kubernetes.io/description: "AI service for machine learning, recommendations, and embedding generation"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+      - name: ai-service
+        image: ai-talent-marketplace/ai-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: DEBUG
+          value: "False"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-credentials
+              key: api-key
+        - name: OPENAI_MODEL
+          value: "text-embedding-ada-002"
+        - name: EMBEDDING_DIMENSION
+          value: "1536"
+        - name: ELASTICSEARCH_HOST
+          value: "elasticsearch"
+        - name: ELASTICSEARCH_PORT
+          value: "9200"
+        - name: ELASTICSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: username
+        - name: ELASTICSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: password
+        - name: ELASTICSEARCH_INDEX_PREFIX
+          value: "ai_talent_marketplace_"
+        - name: MAX_RECOMMENDATIONS
+          value: "10"
+        - name: DEFAULT_CACHE_SIZE
+          value: "1000"
+        - name: DEFAULT_BATCH_SIZE
+          value: "100"
+        - name: DEFAULT_MIN_SCORE
+          value: "0.7"
+        - name: API_PREFIX
+          value: "/api/v1"
+        - name: ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: ai-service-config
+              key: ALLOWED_ORIGINS
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - ai-service
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 10
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - compute-optimized
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: ai-service
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: ai-service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-service-config
+  namespace: ai-talent-marketplace
+data:
+  ALLOWED_ORIGINS: "https://aitalentmarketplace.com,https://www.aitalentmarketplace.com,https://app.aitalentmarketplace.com"
+  LOG_LEVEL: "INFO"
+  DEBUG: "False"
+  ENVIRONMENT: "production"
+  API_PREFIX: "/api/v1"
+  OPENAI_MODEL: "text-embedding-ada-002"
+  EMBEDDING_DIMENSION: "1536"
+  MAX_RECOMMENDATIONS: "10"
+  DEFAULT_CACHE_SIZE: "1000"
+  DEFAULT_BATCH_SIZE: "100"
+  DEFAULT_MIN_SCORE: "0.7"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-service-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: ai-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    - podSelector:
+        matchLabels:
+          app: job-service
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: elasticsearch
+    ports:
+    - protocol: TCP
+      port: 9200
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 443
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-service-hpa
+  namespace: ai-talent-marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-service-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ai-service
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openai-credentials
+  namespace: ai-talent-marketplace
+type: Opaque
+data:
+  api-key: "BASE64_ENCODED_OPENAI_API_KEY"
