@@ -1,0 +1,417 @@
+name: Web CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'release/*'
+    paths:
+      - 'src/web/**'
+      - '.github/workflows/web.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'src/web/**'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 18.x
+  PNPM_VERSION: 8.6.11
+  ECR_REPOSITORY: ai-talent-marketplace/web
+  AWS_REGION: us-east-1
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: src/web
+
+      - name: Run type checking
+        run: pnpm type-check
+        working-directory: src/web
+
+      - name: Run linting
+        run: pnpm lint
+        working-directory: src/web
+
+      - name: Upload ESLint report
+        uses: actions/upload-artifact@v3
+        with:
+          name: eslint-report
+          path: src/web/lint-results.json
+          if-no-files-found: ignore
+
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: src/web
+
+      - name: Run Jest tests
+        run: pnpm test:ci
+        working-directory: src/web
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: src/web/coverage
+          if-no-files-found: error
+
+      - name: Check coverage thresholds
+        run: |
+          COVERAGE_THRESHOLD=80
+          ACTUAL_COVERAGE=$(cat src/web/coverage/coverage-summary.json | jq '.total.lines.pct')
+          
+          if (( $(echo "$ACTUAL_COVERAGE < $COVERAGE_THRESHOLD" | bc -l) )); then
+            echo "Test coverage is below the required threshold of $COVERAGE_THRESHOLD% (actual: $ACTUAL_COVERAGE%)"
+            exit 1
+          fi
+        working-directory: .
+
+  e2e-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Cache Cypress binary
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/Cypress
+          key: ${{ runner.os }}-cypress-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-cypress-
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: src/web
+
+      - name: Run Cypress tests
+        uses: cypress-io/github-action@v5
+        with:
+          working-directory: src/web
+          build: pnpm build
+          start: pnpm start
+          wait-on: 'http://localhost:3000'
+          command: pnpm e2e:ci
+
+      - name: Upload Cypress artifacts
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: cypress-artifacts
+          path: |
+            src/web/cypress/screenshots
+            src/web/cypress/videos
+          if-no-files-found: ignore
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, unit-test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: src/web
+
+      - name: Build Next.js application
+        run: pnpm build
+        working-directory: src/web
+
+      - name: Run bundle analysis
+        if: github.event_name == 'workflow_dispatch'
+        run: pnpm analyze
+        working-directory: src/web
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            src/web/.next
+            src/web/public
+            src/web/package.json
+            src/web/next.config.js
+          if-no-files-found: error
+
+  docker-build-push:
+    runs-on: ubuntu-latest
+    needs: [build, e2e-test]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    outputs:
+      image_uri: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+      image_tag: ${{ steps.set-tag.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: src/web
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Set image tag
+        id: set-tag
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TAG="$SHORT_SHA"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            TAG="develop-$SHORT_SHA"
+          else
+            BRANCH_NAME=$(echo ${{ github.ref }} | sed 's/refs\/heads\///' | sed 's/\//-/g')
+            TAG="$BRANCH_NAME-$SHORT_SHA"
+          fi
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: src/web
+          push: true
+          tags: |
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.set-tag.outputs.tag }}
+            ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-development:
+    runs-on: ubuntu-latest
+    needs: [docker-build-push]
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: development
+      url: https://dev.aitalentmarketplace.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ai-talent-dev-cluster --region ${{ env.AWS_REGION }}
+
+      - name: Update Kubernetes manifest
+        run: |
+          sed -i "s|image:.*|image: ${{ needs.docker-build-push.outputs.image_uri }}:${{ needs.docker-build-push.outputs.image_tag }}|g" k8s/dev/web-deployment.yaml
+
+      - name: Deploy to development
+        run: |
+          kubectl apply -f k8s/dev/web-deployment.yaml
+          kubectl apply -f k8s/dev/web-service.yaml
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/web-frontend -n ai-talent-marketplace --timeout=5m
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against development environment"
+          curl -s -o /dev/null -w "%{http_code}" https://dev.aitalentmarketplace.com/api/health | grep 200
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [docker-build-push]
+    if: startsWith(github.ref, 'refs/heads/release/')
+    environment:
+      name: staging
+      url: https://staging.aitalentmarketplace.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ai-talent-staging-cluster --region ${{ env.AWS_REGION }}
+
+      - name: Update Kubernetes manifest
+        run: |
+          sed -i "s|image:.*|image: ${{ needs.docker-build-push.outputs.image_uri }}:${{ needs.docker-build-push.outputs.image_tag }}|g" k8s/staging/web-deployment.yaml
+
+      - name: Deploy to staging
+        run: |
+          kubectl apply -f k8s/staging/web-deployment.yaml
+          kubectl apply -f k8s/staging/web-service.yaml
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/web-frontend -n ai-talent-marketplace --timeout=5m
+
+      - name: Run integration tests
+        run: |
+          echo "Running integration tests against staging environment"
+          # Add integration test commands here
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [docker-build-push]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://aitalentmarketplace.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ai-talent-prod-cluster --region ${{ env.AWS_REGION }}
+
+      - name: Update canary manifest
+        run: |
+          sed -i "s|image:.*|image: ${{ needs.docker-build-push.outputs.image_uri }}:${{ needs.docker-build-push.outputs.image_tag }}|g" k8s/prod/web-canary-deployment.yaml
+
+      - name: Deploy canary
+        run: |
+          kubectl apply -f k8s/prod/web-canary-deployment.yaml
+
+      - name: Wait for canary rollout
+        run: |
+          kubectl rollout status deployment/web-frontend-canary -n ai-talent-marketplace --timeout=5m
+
+      - name: Run smoke tests against canary
+        run: |
+          echo "Running smoke tests against canary deployment"
+          curl -s -o /dev/null -w "%{http_code}" https://aitalentmarketplace.com/api/health | grep 200
+
+      - name: Update production manifest
+        run: |
+          sed -i "s|image:.*|image: ${{ needs.docker-build-push.outputs.image_uri }}:${{ needs.docker-build-push.outputs.image_tag }}|g" k8s/prod/web-deployment.yaml
+
+      - name: Deploy to production
+        run: |
+          kubectl apply -f k8s/prod/web-deployment.yaml
+          kubectl apply -f k8s/prod/web-service.yaml
+
+      - name: Wait for production rollout
+        run: |
+          kubectl rollout status deployment/web-frontend -n ai-talent-marketplace --timeout=10m
+
+      - name: Run verification tests
+        run: |
+          echo "Running post-deployment verification tests"
+          # Add verification test commands here
