@@ -1,0 +1,311 @@
+# Collaboration Service Kubernetes Configuration
+# Responsible for real-time collaboration features including Jupyter Notebooks, workspace management, and file sharing
+# Part of the AI Talent Marketplace platform backend services
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collaboration-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: collaboration-service
+    component: backend
+    tier: service
+  annotations:
+    kubernetes.io/description: "Collaboration service for real-time Jupyter notebooks, file sharing, and workspace management"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: collaboration-service
+  template:
+    metadata:
+      labels:
+        app: collaboration-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8002"
+    spec:
+      containers:
+      - name: collaboration-service
+        image: ai-talent-marketplace/collaboration-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8002
+          name: http
+        - containerPort: 8001
+          name: websocket
+        env:
+        - name: PORT
+          value: "8002"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: DEBUG
+          value: "False"
+        - name: ENVIRONMENT
+          value: "production"
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-credentials
+              key: uri
+        - name: MONGODB_DB_NAME
+          value: "ai_talent_marketplace"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: password
+        - name: FILE_STORAGE_PATH
+          value: "/data/files"
+        - name: JUPYTER_NOTEBOOK_DIR
+          value: "/data/notebooks"
+        - name: JUPYTER_KERNEL_TIMEOUT
+          value: "3600"
+        - name: JUPYTER_EXECUTION_TIMEOUT
+          value: "300"
+        - name: ALLOWED_FILE_TYPES
+          value: "['py', 'ipynb', 'md', 'txt', 'csv', 'json', 'yaml', 'yml', 'pdf', 'png', 'jpg', 'jpeg', 'gif']"
+        - name: MAX_FILE_SIZE_MB
+          value: "50"
+        - name: WORKSPACE_INACTIVITY_TIMEOUT
+          value: "604800"
+        - name: REAL_TIME_MESSAGE_HISTORY
+          value: "100"
+        - name: ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: collaboration-service-config
+              key: ALLOWED_ORIGINS
+        - name: API_PREFIX
+          value: "/api/v1"
+        - name: USE_S3_STORAGE
+          value: "True"
+        - name: S3_BUCKET_NAME
+          value: "ai-talent-marketplace-files"
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: collaboration-file-storage
+          mountPath: /data/files
+        - name: collaboration-notebook-storage
+          mountPath: /data/notebooks
+      volumes:
+      - name: collaboration-file-storage
+        persistentVolumeClaim:
+          claimName: collaboration-file-storage
+      - name: collaboration-notebook-storage
+        persistentVolumeClaim:
+          claimName: collaboration-notebook-storage
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - collaboration-service
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 10
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - compute-optimized
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collaboration-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: collaboration-service
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8002
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 8001
+    targetPort: websocket
+    protocol: TCP
+    name: websocket
+  selector:
+    app: collaboration-service
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: collaboration-file-storage
+  namespace: ai-talent-marketplace
+  labels:
+    app: collaboration-service
+    component: storage
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: efs-sc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: collaboration-notebook-storage
+  namespace: ai-talent-marketplace
+  labels:
+    app: collaboration-service
+    component: storage
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: efs-sc
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collaboration-service-config
+  namespace: ai-talent-marketplace
+data:
+  ALLOWED_ORIGINS: "https://aitalentmarketplace.com,https://www.aitalentmarketplace.com,https://app.aitalentmarketplace.com"
+  LOG_LEVEL: "INFO"
+  DEBUG: "False"
+  ENVIRONMENT: "production"
+  API_PREFIX: "/api/v1"
+  JUPYTER_KERNEL_TIMEOUT: "3600"
+  JUPYTER_EXECUTION_TIMEOUT: "300"
+  ALLOWED_FILE_TYPES: "['py', 'ipynb', 'md', 'txt', 'csv', 'json', 'yaml', 'yml', 'pdf', 'png', 'jpg', 'jpeg', 'gif']"
+  MAX_FILE_SIZE_MB: "50"
+  WORKSPACE_INACTIVITY_TIMEOUT: "604800"
+  REAL_TIME_MESSAGE_HISTORY: "100"
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collaboration-service-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: collaboration-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8002
+    - protocol: TCP
+      port: 8001
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: collaboration-service-hpa
+  namespace: ai-talent-marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: collaboration-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: collaboration-service-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: collaboration-service
