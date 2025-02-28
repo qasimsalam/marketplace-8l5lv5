@@ -1,0 +1,378 @@
+# Prometheus Alert Rules for AI Talent Marketplace
+# Version: 1.0.0
+# Prometheus Version: 2.40.x
+# Alertmanager Version: 0.25.x
+#
+# This file defines alert rules for the AI Talent Marketplace monitoring system.
+# These rules help detect issues with service availability, performance, 
+# resource utilization, database health, security incidents, and business KPIs.
+
+groups:
+  # Service availability alerts
+  - name: service_availability
+    rules:
+      - alert: ServiceDown
+        expr: up{namespace="ai-talent-marketplace"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: Service {{ $labels.job }} is down
+          description: Service {{ $labels.job }} has been down for more than 1 minute in namespace {{ $labels.namespace }}
+          dashboard: https://grafana.example.com/d/services
+          runbook: https://runbooks.example.com/service-down
+
+      - alert: ServicePodsMissing
+        expr: kube_deployment_status_replicas_available{namespace="ai-talent-marketplace"} / kube_deployment_spec_replicas{namespace="ai-talent-marketplace"} < 0.7
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: Service {{ $labels.deployment }} has missing pods
+          description: Service {{ $labels.deployment }} has less than 70% of desired pods available for more than 5 minutes
+          dashboard: https://grafana.example.com/d/kubernetes
+          runbook: https://runbooks.example.com/pods-missing
+
+      - alert: PodCrashLooping
+        expr: increase(kube_pod_container_status_restarts_total{namespace="ai-talent-marketplace"}[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          category: availability
+        annotations:
+          summary: Pod {{ $labels.pod }} is crash looping
+          description: Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted more than 3 times in the last 15 minutes
+          dashboard: https://grafana.example.com/d/kubernetes
+          runbook: https://runbooks.example.com/pod-crash-looping
+
+      - alert: EndpointDown
+        expr: probe_success{job="blackbox"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: Endpoint {{ $labels.instance }} is down
+          description: Endpoint {{ $labels.instance }} has been down for more than 2 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/endpoint-down
+
+  # Service performance alerts
+  - name: service_performance
+    rules:
+      - alert: HighResponseTime
+        expr: service:request:latency:p95:5m > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: High response time for service {{ $labels.service }}
+          description: 95th percentile response time for service {{ $labels.service }} is above 500ms for more than 5 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/high-response-time
+
+      - alert: CriticalResponseTime
+        expr: service:request:latency:p95:5m > 1
+        for: 2m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: Critical response time for service {{ $labels.service }}
+          description: 95th percentile response time for service {{ $labels.service }} is above 1s for more than 2 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/critical-response-time
+
+      - alert: HighErrorRate
+        expr: service:request:error:ratio:5m > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: High error rate for service {{ $labels.service }}
+          description: Error rate for service {{ $labels.service }} is above 5% for more than 5 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/high-error-rate
+
+      - alert: CriticalErrorRate
+        expr: service:request:error:ratio:5m > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: Critical error rate for service {{ $labels.service }}
+          description: Error rate for service {{ $labels.service }} is above 10% for more than 2 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/critical-error-rate
+
+  # Resource usage alerts
+  - name: resource_usage
+    rules:
+      - alert: HighCPUUsage
+        expr: service:cpu:usage:percent:5m > 80
+        for: 10m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: High CPU usage for container {{ $labels.container }}
+          description: CPU usage for container {{ $labels.container }} has been above 80% for more than 10 minutes
+          dashboard: https://grafana.example.com/d/infrastructure
+          runbook: https://runbooks.example.com/high-cpu-usage
+
+      - alert: CriticalCPUUsage
+        expr: service:cpu:usage:percent:5m > 95
+        for: 5m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: Critical CPU usage for container {{ $labels.container }}
+          description: CPU usage for container {{ $labels.container }} has been above 95% for more than 5 minutes
+          dashboard: https://grafana.example.com/d/infrastructure
+          runbook: https://runbooks.example.com/critical-cpu-usage
+
+      - alert: HighMemoryUsage
+        expr: service:memory:usage:percent:5m > 80
+        for: 10m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: High memory usage for container {{ $labels.container }}
+          description: Memory usage for container {{ $labels.container }} has been above 80% for more than 10 minutes
+          dashboard: https://grafana.example.com/d/infrastructure
+          runbook: https://runbooks.example.com/high-memory-usage
+
+      - alert: CriticalMemoryUsage
+        expr: service:memory:usage:percent:5m > 95
+        for: 5m
+        labels:
+          severity: critical
+          category: resource
+        annotations:
+          summary: Critical memory usage for container {{ $labels.container }}
+          description: Memory usage for container {{ $labels.container }} has been above 95% for more than 5 minutes
+          dashboard: https://grafana.example.com/d/infrastructure
+          runbook: https://runbooks.example.com/critical-memory-usage
+
+      - alert: DiskSpaceRunningLow
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+          category: resource
+        annotations:
+          summary: Disk space running low on node {{ $labels.instance }}
+          description: Disk space is below 15% on mountpoint {{ $labels.mountpoint }} for more than 10 minutes
+          dashboard: https://grafana.example.com/d/infrastructure
+          runbook: https://runbooks.example.com/disk-space-low
+
+  # Database alerts
+  - name: database_alerts
+    rules:
+      - alert: PostgresHighConnections
+        expr: database:connections:percent:max > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: PostgreSQL connection pool usage is high
+          description: PostgreSQL database {{ $labels.datname }} is using more than 80% of available connections for more than 5 minutes
+          dashboard: https://grafana.example.com/d/database
+          runbook: https://runbooks.example.com/postgres-high-connections
+
+      - alert: PostgresHighQueryTime
+        expr: database:query:latency:avg:5m > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: PostgreSQL average query time is high
+          description: PostgreSQL database {{ $labels.datname }} has average query time above 1 second for more than 5 minutes
+          dashboard: https://grafana.example.com/d/database
+          runbook: https://runbooks.example.com/postgres-high-query-time
+
+      - alert: PostgresDeadlocks
+        expr: increase(pg_stat_database_deadlocks{namespace="ai-talent-marketplace"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: PostgreSQL deadlocks detected
+          description: PostgreSQL database {{ $labels.datname }} has experienced deadlocks in the last 5 minutes
+          dashboard: https://grafana.example.com/d/database
+          runbook: https://runbooks.example.com/postgres-deadlocks
+
+      - alert: RedisHighMemoryUsage
+        expr: redis:memory:usage:percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: Redis memory usage is high
+          description: Redis instance {{ $labels.instance }} memory usage is above 80% for more than 5 minutes
+          dashboard: https://grafana.example.com/d/database
+          runbook: https://runbooks.example.com/redis-high-memory
+
+      - alert: ElasticsearchClusterHealth
+        expr: elasticsearch:cluster:status > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: database
+        annotations:
+          summary: Elasticsearch cluster health is not green
+          description: Elasticsearch cluster is in yellow (2) or red (3) state for more than 5 minutes
+          dashboard: https://grafana.example.com/d/elasticsearch
+          runbook: https://runbooks.example.com/elasticsearch-health
+
+  # Security alerts
+  - name: security_alerts
+    rules:
+      - alert: HighRateOfAuthFailures
+        expr: sum(rate(auth_failures_total{service="user-service"}[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: High rate of authentication failures
+          description: More than 5 authentication failures per second detected in the last 5 minutes
+          dashboard: https://grafana.example.com/d/security
+          runbook: https://runbooks.example.com/high-auth-failures
+
+      - alert: RateLimitExceeded
+        expr: sum(rate(http_request_ratelimit_exceeded_total{namespace="ai-talent-marketplace"}[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: Rate limit exceeded frequently
+          description: More than 10 rate limit exceeded events per second for service {{ $labels.service }} in the last 5 minutes
+          dashboard: https://grafana.example.com/d/api-gateway
+          runbook: https://runbooks.example.com/rate-limit-exceeded
+
+      - alert: UnauthorizedAccessAttempts
+        expr: sum(rate(security_events_total{job="api-gateway",type="unauthorized_access"}[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: High number of unauthorized access attempts
+          description: More than 5 unauthorized access attempts per second detected in the last 5 minutes
+          dashboard: https://grafana.example.com/d/security
+          runbook: https://runbooks.example.com/unauthorized-access
+
+      - alert: SuspiciousIPAccess
+        expr: security:suspicious_ip:requests:rate:5m > 10
+        for: 5m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: Suspicious IP access detected
+          description: High rate of requests from suspicious IP addresses detected in the last 5 minutes
+          dashboard: https://grafana.example.com/d/security
+          runbook: https://runbooks.example.com/suspicious-ip
+
+  # Business KPI alerts
+  - name: business_kpi_alerts
+    rules:
+      - alert: AbnormalDropInNewUsers
+        expr: business:user:registration:rate:per_day < scalar(avg_over_time(business:user:registration:rate:per_day[7d])) * 0.5
+        for: 1d
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: Abnormal drop in new user registrations
+          description: New user registration rate is less than 50% of the 7-day average
+          dashboard: https://grafana.example.com/d/business-kpis
+          runbook: https://runbooks.example.com/user-registration-drop
+
+      - alert: HighPaymentFailureRate
+        expr: 1 - business:payment:success:ratio > 0.1
+        for: 1h
+        labels:
+          severity: critical
+          category: business
+        annotations:
+          summary: High payment failure rate
+          description: Payment failure rate is above 10% for more than 1 hour
+          dashboard: https://grafana.example.com/d/business-kpis
+          runbook: https://runbooks.example.com/payment-failures
+
+      - alert: LowJobMatchRate
+        expr: business:job:match:success:ratio < 0.7
+        for: 1d
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: Low job match success rate
+          description: Job match success rate is below 70% for more than 1 day
+          dashboard: https://grafana.example.com/d/business-kpis
+          runbook: https://runbooks.example.com/low-match-rate
+
+      - alert: TimeToHireBeyondTarget
+        expr: business:time_to_hire:avg:days > 14
+        for: 3d
+        labels:
+          severity: warning
+          category: business
+        annotations:
+          summary: Time to hire beyond target
+          description: Average time to hire exceeds the target of 14 days for more than 3 days
+          dashboard: https://grafana.example.com/d/business-kpis
+          runbook: https://runbooks.example.com/time-to-hire
+
+  # AI service alerts
+  - name: ai_service_alerts
+    rules:
+      - alert: AIModelResponseTimeSlow
+        expr: ai_service:embedding:generation:latency:avg > 1
+        for: 10m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: AI model response time is slow
+          description: Average embedding generation time is above 1 second for more than 10 minutes
+          dashboard: https://grafana.example.com/d/ai-service
+          runbook: https://runbooks.example.com/ai-model-slow
+
+      - alert: AIModelHighErrorRate
+        expr: ai_service:embedding:error:ratio > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: AI model high error rate
+          description: AI model error rate is above 5% for more than 5 minutes
+          dashboard: https://grafana.example.com/d/ai-service
+          runbook: https://runbooks.example.com/ai-model-errors
+
+      - alert: CollaborationServiceHighLatency
+        expr: collaboration_service:notebook:execution:latency:avg > 3
+        for: 5m
+        labels:
+          severity: warning
+          category: ai
+        annotations:
+          summary: Jupyter notebook execution latency is high
+          description: Average notebook cell execution time is above 3 seconds for more than 5 minutes
+          dashboard: https://grafana.example.com/d/collaboration-service
+          runbook: https://runbooks.example.com/notebook-latency
