@@ -1,0 +1,74 @@
+/* 
+ * AI Talent Marketplace - Core Tailwind CSS
+ * tailwindcss v3.3.3
+ */
+
+/* Import Tailwind's base styles - CSS reset and foundational elements */
+@tailwind base;
+
+/* Import Tailwind's component classes */
+@tailwind components;
+
+/* Import Tailwind's utility classes */
+@tailwind utilities;
+
+/* Custom component styles for the AI Talent Marketplace */
+@layer components {
+  /* Profile card styling */
+  .profile-card {
+    @apply rounded-lg shadow-md overflow-hidden bg-white dark:bg-gray-800 transition-all;
+  }
+
+  /* Job listing card */
+  .job-card {
+    @apply border border-gray-200 dark:border-gray-700 p-4 rounded-lg hover:shadow-md transition-all;
+  }
+
+  /* Primary button style */
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors;
+  }
+
+  /* Secondary button style */
+  .btn-secondary {
+    @apply bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 py-2 px-4 rounded-md transition-colors;
+  }
+
+  /* Form input styling */
+  .form-input {
+    @apply border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 w-full focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 transition-colors;
+  }
+
+  /* Skill badge for AI/ML specializations */
+  .skill-badge {
+    @apply inline-block bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 text-xs px-2 py-1 rounded-full mr-2 mb-2;
+  }
+}
+
+/* Custom utility classes for the AI Talent Marketplace */
+@layer utilities {
+  /* Progress bar styling utility */
+  .progress-bar {
+    @apply h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden;
+  }
+
+  /* Progress bar fill */
+  .progress-fill {
+    @apply h-full bg-blue-600 transition-all;
+  }
+
+  /* Specialized AI/ML content highlighting */
+  .ai-highlight {
+    @apply border-l-4 border-purple-500 pl-4;
+  }
+
+  /* Verification badge indicator */
+  .verified-badge {
+    @apply text-green-600 dark:text-green-400;
+  }
+
+  /* Container with controlled max-width for content */
+  .content-container {
+    @apply max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+}
