@@ -1,0 +1,153 @@
+# Tempo Configuration for AI Talent Marketplace
+# Version: 1.5.x
+# Purpose: Distributed tracing system configuration integrating with Grafana observability stack
+
+# Server configuration
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+
+# Distributor configuration for ingesting traces
+distributor:
+  receivers:
+    jaeger:
+      protocols:
+        thrift_http: 14268
+        grpc: 14250
+        thrift_binary: 6832
+        thrift_compact: 6831
+    otlp:
+      protocols:
+        http: 4318
+        grpc: 4317
+    zipkin:
+      endpoint: 9411
+
+# Ingester configuration for processing traces
+ingester:
+  trace_idle_period: "10s"
+  max_block_duration: "5m"
+  flush_check_period: "30s"
+
+# Compactor configuration for efficient storage
+compactor:
+  compaction_window: "1h"
+  max_compaction_objects: 1000000
+  compaction_cycle: "30s"
+  retention: "48h"
+
+# Storage configuration
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: ai-talent-marketplace-traces
+      endpoint: s3.amazonaws.com
+      region: ${AWS_REGION}
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+    cache:
+      enabled: true
+      backend: redis
+      redis:
+        endpoint: redis:6379
+
+# Querier configuration
+querier:
+  frontend_worker:
+    frontend_address: tempo-query-frontend:9095
+
+# Metrics generator configuration
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: ai-talent-marketplace
+  storage:
+    path: /tmp/tempo/generator/wal
+    remote_write:
+      enabled: true
+      client:
+        url: http://prometheus:9090/api/v1/write
+        timeout: "10s"
+        queue_config:
+          capacity: 500
+          max_shards: 1000
+          min_shards: 1
+          max_samples_per_send: 100
+  processors:
+    service_graphs:
+      histogram_buckets: [0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8]
+    span_metrics:
+      histogram_buckets: [0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512, 1.024, 2.048, 4.096, 8.192, 16.384]
+
+# Global overrides
+overrides:
+  metrics_generator_processors: [service-graphs, span-metrics]
+  ingestion_rate_limit_bytes: "20MB"
+  ingestion_burst_size_bytes: "30MB"
+  max_traces_per_user: 100000
+
+# Kubernetes deployment configuration
+kubernetes_deployment:
+  replicas: 2
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+  persistence:
+    storage_class: gp3
+    size: "50Gi"
+    mount_path: "/data"
+  env_vars:
+    - name: AWS_REGION
+      valueFrom:
+        configMapKeyRef:
+          name: tempo-config
+          key: AWS_REGION
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: access_key
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: tempo-s3-credentials
+          key: secret_key
+
+# Service instrumentation configuration
+service_instrumentation:
+  services:
+    - api-gateway
+    - user-service
+    - job-service
+    - payment-service
+    - collaboration-service
+    - ai-service
+  libraries:
+    - opentelemetry-js
+    - opentelemetry-python
+  propagation_formats:
+    - W3C Trace Context
+    - Jaeger
+    - B3
+
+# Grafana integration configuration
+grafana_integration:
+  datasource:
+    name: Tempo
+    type: tempo
+    url: http://tempo:3200
+    access: proxy
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: loki
