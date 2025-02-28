@@ -1,0 +1,209 @@
+# AWS WAF v2 rules for AI Talent Marketplace
+# Version: 1.0.0
+# Last updated: 2023-08-01
+
+WebACL:
+  Name: ai-talent-marketplace-webacl
+  Scope: CLOUDFRONT
+  Description: "Web ACL for AI Talent Marketplace platform"
+  DefaultAction: ALLOW
+  VisibilityConfig:
+    SampledRequestsEnabled: true
+    CloudWatchMetricsEnabled: true
+    MetricName: AITalentMarketplaceWebACL
+  Rules:
+    # AWS Managed Rules
+    - Name: AWSManagedRulesCommonRuleSet
+      Priority: 10
+      Type: ManagedRuleGroup
+      VendorName: AWS
+      ManagedRuleGroupName: AWSManagedRulesCommonRuleSet
+      ExcludedRules: []
+      OverrideAction: None
+      
+    - Name: AWSManagedRulesSQLiRuleSet
+      Priority: 20
+      Type: ManagedRuleGroup
+      VendorName: AWS
+      ManagedRuleGroupName: AWSManagedRulesSQLiRuleSet
+      ExcludedRules: []
+      OverrideAction: None
+
+    - Name: AWSManagedRulesXSSRuleSet
+      Priority: 30
+      Type: ManagedRuleGroup
+      VendorName: AWS
+      ManagedRuleGroupName: AWSManagedRulesXSSRuleSet
+      ExcludedRules: []
+      OverrideAction: None
+      
+    - Name: AWSManagedRulesKnownBadInputsRuleSet
+      Priority: 40
+      Type: ManagedRuleGroup
+      VendorName: AWS
+      ManagedRuleGroupName: AWSManagedRulesKnownBadInputsRuleSet
+      ExcludedRules: []
+      OverrideAction: None
+
+    # Rate-based rule for 100 requests/min per IP
+    - Name: RateLimitRule
+      Priority: 50
+      Type: RateBased
+      RateLimit: 100
+      AggregateKeyType: IP
+      Action: Block
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: RateLimitRule
+
+    # Block specific IPs rule
+    - Name: BlockedIPsRule
+      Priority: 60
+      Type: IPSet
+      IPSetReference: BlockedIPSet
+      Action: Block
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: BlockedIPsRule
+
+    # Admin panel specific protection
+    - Name: AdminAccessRule
+      Priority: 70
+      Type: AND
+      Statements:
+        - Type: ByteMatch
+          FieldToMatch: URI_PATH
+          PositionalConstraint: STARTS_WITH
+          SearchString: "/admin"
+          TextTransformations:
+            - Type: LOWERCASE
+              Priority: 0
+        - Type: NOT
+          Statement:
+            Type: IPSet
+            IPSetReference: AdminIPSet
+      Action: Block
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: AdminAccessRule
+      
+    # API-specific rate limit rule
+    - Name: APIRateLimitRule
+      Priority: 80
+      Type: AND
+      Statements:
+        - Type: ByteMatch
+          FieldToMatch: URI_PATH
+          PositionalConstraint: STARTS_WITH
+          SearchString: "/api"
+          TextTransformations:
+            - Type: LOWERCASE
+              Priority: 0
+        - Type: RateBased
+          RateLimit: 300  # Higher limit for API endpoints
+          AggregateKeyType: IP
+      Action: Block
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: APIRateLimitRule
+
+    # Protection for authentication endpoints
+    - Name: AuthProtectionRule
+      Priority: 90
+      Type: AND
+      Statements:
+        - Type: ByteMatch
+          FieldToMatch: URI_PATH
+          PositionalConstraint: STARTS_WITH
+          SearchString: "/auth"
+          TextTransformations:
+            - Type: LOWERCASE
+              Priority: 0
+        - Type: RateBased
+          RateLimit: 50  # Lower limit for auth endpoints to prevent brute force
+          AggregateKeyType: IP
+      Action: Block
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: AuthProtectionRule
+
+IPSets:
+  AdminIPSet:
+    Name: admin-ip-set
+    Description: "IP addresses allowed for admin access"
+    IPAddressVersion: IPV4
+    Addresses:
+      - "192.0.2.0/24"  # Example - Replace with actual admin IPs
+      - "198.51.100.0/24"  # Example - Replace with actual admin IPs
+
+  BlockedIPSet:
+    Name: blocked-ip-set
+    Description: "IP addresses blocked from access"
+    IPAddressVersion: IPV4
+    Addresses:
+      - "203.0.113.0/24"  # Example - Replace with actual blocked IPs
+
+LoggingConfiguration:
+  LogDestination: "arn:aws:s3:::ai-talent-marketplace-waf-logs"
+  RedactedFields:
+    - FieldToMatch:
+        SingleHeader:
+          Name: "authorization"
+    - FieldToMatch:
+        SingleHeader:
+          Name: "cookie"
+    - FieldToMatch:
+        QueryString: {}
+  LoggingFilter:
+    DefaultBehavior: KEEP
+    Filters:
+      - Behavior: DROP
+        Requirement: MEETS_ALL
+        Conditions:
+          - ActionCondition:
+              Action: COUNT
+
+EnvironmentVariations:
+  Development:
+    RateLimitRules:
+      GeneralRateLimit: 200  # Higher limit for development
+      APIRateLimit: 500
+      AuthRateLimit: 100
+    LoggingSamplingRate: 100  # Log all requests
+    
+  Staging:
+    RateLimitRules:
+      GeneralRateLimit: 150
+      APIRateLimit: 400
+      AuthRateLimit: 75
+    LoggingSamplingRate: 50  # Log 50% of requests
+    
+  Production:
+    RateLimitRules:
+      GeneralRateLimit: 100  # Strict limit for production
+      APIRateLimit: 300
+      AuthRateLimit: 50
+    LoggingSamplingRate: 20  # Log 20% of requests
+    AdditionalRules:
+      - Name: GeoBlockingRule
+        Priority: 5
+        Type: GeoMatch
+        CountryCodes:
+          - "RU"
+          - "CN"
+          - "KP"
+        Action: Block
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: GeoBlockingRule
+      - Name: ShieldIntegrationRule
+        Description: "Integration with AWS Shield for DDoS protection"
+        EnabledInShield: true
+        AlertThreshold: 100  # requests/sec
+        ActionOnAlert: NOTIFY
