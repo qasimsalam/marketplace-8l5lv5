@@ -1,0 +1,52 @@
+buildscript {
+    ext {
+        buildToolsVersion = "33.0.0"
+        minSdkVersion = 21
+        compileSdkVersion = 33
+        targetSdkVersion = 33
+        kotlinVersion = "1.8.0"
+        
+        androidXAppCompatVersion = "1.4.1"
+        androidXCoreVersion = "1.10.1"
+        androidXFragmentVersion = "1.5.5"
+        androidXBiometricVersion = "1.2.0-alpha05"
+        androidXSecurityCryptoVersion = "1.1.0-alpha06"
+        
+        firebaseMessagingVersion = "23.1.2"
+        reactNativeVersion = "0.72.4"
+    }
+    
+    repositories {
+        google()
+        mavenCentral()
+        jcenter()
+    }
+    
+    dependencies {
+        classpath "com.android.tools.build:gradle:7.4.2"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0"
+        classpath "com.google.gms:google-services:4.3.15"
+        classpath "com.google.firebase:firebase-crashlytics-gradle:2.9.5"
+        classpath "com.facebook.react:react-native-gradle-plugin:0.72.4"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        jcenter()
+        maven { url "https://www.jitpack.io" }
+        maven { url "$rootDir/../node_modules/react-native/android" }
+        maven { url "$rootDir/../node_modules/jsc-android/dist" }
+    }
+}
+
+wrapper {
+    gradleVersion = '7.5.1'
+    distributionType = 'all'
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
