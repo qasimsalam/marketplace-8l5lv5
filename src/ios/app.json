@@ -1,0 +1,59 @@
+{
+  "name": "AITalentMarketplace",
+  "displayName": "AI Talent",
+  "version": "1.0.0",
+  "description": "A specialized platform connecting businesses with verified AI professionals for project-based work",
+  "main": "index.js",
+  "expo": {
+    "name": "AI Talent",
+    "slug": "ai-talent-marketplace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.svg",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/auth-background.jpg",
+      "resizeMode": "cover",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.aitalentmarketplace.ios",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "AI Talent Marketplace needs access to your camera to upload profile photos and project portfolio items.",
+        "NSPhotoLibraryUsageDescription": "AI Talent Marketplace needs access to your photo library to upload portfolio items and project documents.",
+        "NSPhotoLibraryAddUsageDescription": "AI Talent Marketplace needs permission to save images to your photo library for your portfolio.",
+        "NSFaceIDUsageDescription": "AI Talent Marketplace uses Face ID for secure login and payment verification.",
+        "NSLocationWhenInUseUsageDescription": "AI Talent Marketplace uses your location to suggest nearby job opportunities.",
+        "NSMicrophoneUsageDescription": "AI Talent Marketplace needs microphone access for video interviews and voice messages in the collaboration workspace.",
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      },
+      "associatedDomains": [
+        "applinks:aitalentmarketplace.com"
+      ],
+      "usesIcloudStorage": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-local-authentication"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "packagerOpts": {
+      "config": "metro.config.js"
+    },
+    "scheme": "aitalentmarketplace"
+  }
+}
