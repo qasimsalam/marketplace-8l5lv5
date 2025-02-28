@@ -1,0 +1,209 @@
+/**
+ * AI Talent Marketplace - Global CSS
+ * Global styles, CSS reset, custom variables, and utility classes
+ */
+
+/* Import Tailwind CSS */
+@import './tailwind.css';
+
+/* CSS variables for design token system */
+:root {
+  /* Default text and background colors */
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 245, 247, 251;
+  --background-end-rgb: 255, 255, 255;
+  
+  /* Brand colors */
+  --primary-rgb: 14, 165, 233;
+  --secondary-rgb: 139, 92, 246;
+  --accent-rgb: 249, 115, 22;
+  
+  /* Status colors */
+  --error-rgb: 220, 38, 38;
+  --success-rgb: 22, 163, 74;
+  
+  /* Accessibility */
+  --focus-ring: 0 0 0 2px rgba(14, 165, 233, 0.5);
+  
+  /* Font system with fallbacks */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+/* Dark mode variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 17, 24, 39;
+    --background-end-rgb: 31, 41, 55;
+    --primary-rgb: 56, 189, 248;
+    --secondary-rgb: 167, 139, 250;
+    --accent-rgb: 251, 146, 60;
+    --error-rgb: 248, 113, 113;
+    --success-rgb: 74, 222, 128;
+    --focus-ring: 0 0 0 2px rgba(56, 189, 248, 0.5);
+  }
+}
+
+/* CSS Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Base document styling */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--background-start-rgb)),
+    rgb(var(--background-end-rgb))
+  );
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Main content area */
+main {
+  flex: 1 1 auto;
+}
+
+/* Links */
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.15s ease-in-out;
+}
+
+a:hover {
+  color: rgb(var(--primary-rgb));
+}
+
+/* Responsive images */
+img, svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Accessibility styles */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Hide content visually but keep it accessible to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Respect user preferences for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Utility classes */
+.container {
+  width: 100%;
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* Form element styling */
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 100%;
+  line-height: 1.15;
+  margin: 0;
+}
+
+button, [type='button'], [type='reset'], [type='submit'] {
+  appearance: button;
+  cursor: pointer;
+}
+
+input[type='text'], 
+input[type='email'], 
+input[type='password'], 
+textarea, 
+select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(var(--foreground-rgb), 0.2);
+  border-radius: 0.25rem;
+  background-color: transparent;
+  width: 100%;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(var(--foreground-rgb), 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--foreground-rgb), 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--foreground-rgb), 0.3);
+}
+
+/* Responsive helpers */
+.hide-on-mobile {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .hide-on-mobile {
+    display: block;
+  }
+  
+  .hide-on-desktop {
+    display: none;
+  }
+}
+
+.hide-on-desktop {
+  display: block;
+}
