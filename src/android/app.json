@@ -1,0 +1,75 @@
+{
+  "name": "AITalentMarketplace",
+  "displayName": "AI Talent",
+  "version": "1.0.0",
+  "description": "A specialized platform connecting businesses with verified AI professionals for project-based work",
+  "main": "index.js",
+  "expo": {
+    "name": "AI Talent",
+    "slug": "ai-talent-marketplace",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.svg",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/auth-background.jpg",
+      "resizeMode": "cover",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.aitalentmarketplace",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.svg",
+        "backgroundColor": "#FFFFFF"
+      },
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "SCHEDULE_EXACT_ALARM",
+        "WAKE_LOCK",
+        "CAMERA"
+      ],
+      "useNextNotificationsApi": true,
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "aitalentmarketplace.com",
+              "pathPrefix": "/app"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-local-authentication"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "packagerOpts": {
+      "config": "metro.config.js"
+    },
+    "scheme": "aitalentmarketplace"
+  }
+}
