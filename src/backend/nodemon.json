@@ -1,0 +1,29 @@
+{
+  "restartable": "rs",
+  "ignore": [
+    ".git",
+    "node_modules/",
+    "dist/",
+    "coverage/",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "watch": [
+    "shared/src/",
+    "api-gateway/src/",
+    "user-service/src/",
+    "job-service/src/",
+    "payment-service/src/",
+    "collaboration-service/src/",
+    "ai-service/src/"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "ext": "ts,js,json",
+  "execMap": {
+    "ts": "ts-node"
+  },
+  "verbose": true,
+  "delay": 1000
+}
