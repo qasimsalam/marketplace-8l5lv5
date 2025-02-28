@@ -1,0 +1,356 @@
+---
+# User Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: user-service
+    component: backend
+    tier: service
+  annotations:
+    kubernetes.io/description: "User service for user management, authentication, and profile operations"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4000"
+    spec:
+      containers:
+      - name: user-service
+        image: ai-talent-marketplace/user-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "4000"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: SERVICE_NAME
+          value: "user-service"
+        - name: DB_HOST
+          value: "postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "user_service"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: user-service-password
+        - name: DB_POOL_SIZE
+          value: "10"
+        - name: REDIS_URL
+          value: "redis://redis:6379/0"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: jwt-secret
+        - name: JWT_ACCESS_EXPIRY
+          value: "15m"
+        - name: JWT_REFRESH_EXPIRY
+          value: "7d"
+        - name: JWT_ALGORITHM
+          value: "RS256"
+        - name: JWT_ISSUER
+          value: "ai-talent-marketplace"
+        - name: JWT_AUDIENCE
+          value: "ai-talent-marketplace-api"
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: user-service-config
+              key: CORS_ALLOWED_ORIGINS
+        - name: GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: github-client-id
+        - name: GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: github-client-secret
+        - name: LINKEDIN_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: linkedin-client-id
+        - name: LINKEDIN_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: linkedin-client-secret
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: google-client-id
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: google-client-secret
+        - name: PASSWORD_RESET_EXPIRY
+          value: "24h"
+        - name: EMAIL_VERIFICATION_EXPIRY
+          value: "48h"
+        - name: RATE_LIMIT_WINDOW
+          value: "60000"
+        - name: RATE_LIMIT_MAX_REQUESTS
+          value: "100"
+        - name: S3_BUCKET
+          value: "ai-talent-marketplace-user-files"
+        - name: S3_REGION
+          value: "us-east-1"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: user-service-secrets
+              key: aws-secret-access-key
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - user-service
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 10
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - general
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+---
+# User Service Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: user-service
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4000
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: user-service
+---
+# User Service HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: user-service-hpa
+  namespace: ai-talent-marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: user-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# User Service NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-service-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: user-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    - podSelector:
+        matchLabels:
+          app: job-service
+    - podSelector:
+        matchLabels:
+          app: payment-service
+    ports:
+    - protocol: TCP
+      port: 4000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+---
+# User Service PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: user-service
+---
+# User Service ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-service-config
+  namespace: ai-talent-marketplace
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "4000"
+  HOST: "0.0.0.0"
+  JWT_EXPIRY: "15m"
+  JWT_ALGORITHM: "RS256"
+  JWT_ISSUER: "ai-talent-marketplace"
+  JWT_AUDIENCE: "ai-talent-marketplace-api"
+  RATE_LIMIT_WINDOW: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  PASSWORD_RESET_EXPIRY: "24h"
+  EMAIL_VERIFICATION_EXPIRY: "48h"
+  S3_BUCKET: "ai-talent-marketplace-user-files"
+  S3_REGION: "us-east-1"
+  CORS_ALLOWED_ORIGINS: "https://aitalentmarketplace.com,https://www.aitalentmarketplace.com,https://app.aitalentmarketplace.com"
+---
+# User Service Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: user-service-secrets
+  namespace: ai-talent-marketplace
+type: Opaque
+data:
+  jwt-secret: "YmFzZTY0X2VuY29kZWRfc2VjcmV0X2tleQ=="
+  github-client-id: "YmFzZTY0X2VuY29kZWRfZ2l0aHViX2NsaWVudF9pZA=="
+  github-client-secret: "YmFzZTY0X2VuY29kZWRfZ2l0aHViX2NsaWVudF9zZWNyZXQ="
+  linkedin-client-id: "YmFzZTY0X2VuY29kZWRfbGlua2VkaW5fY2xpZW50X2lk"
+  linkedin-client-secret: "YmFzZTY0X2VuY29kZWRfbGlua2VkaW5fY2xpZW50X3NlY3JldA=="
+  google-client-id: "YmFzZTY0X2VuY29kZWRfZ29vZ2xlX2NsaWVudF9pZA=="
+  google-client-secret: "YmFzZTY0X2VuY29kZWRfZ29vZ2xlX2NsaWVudF9zZWNyZXQ="
+  aws-access-key-id: "YmFzZTY0X2VuY29kZWRfYXdzX2FjY2Vzc19rZXlfaWQ="
+  aws-secret-access-key: "YmFzZTY0X2VuY29kZWRfYXdzX3NlY3JldF9hY2Nlc3Nfa2V5"
