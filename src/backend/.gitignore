@@ -1,0 +1,75 @@
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.python-version
+*.egg-info/
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Docker
+db/data/
+db/mongodb/
+db/redis/
+db/elasticsearch/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Uploads
+uploads/
+
+# Data
+data/
+*/data/
+
+# Jupyter notebooks (except templates)
+**/*.ipynb
+!**/templates/*.ipynb
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE and editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Certificates and keys
+*.pem
+*.key
+
+# Lerna
+lerna-debug.log
+.lerna-changelog
