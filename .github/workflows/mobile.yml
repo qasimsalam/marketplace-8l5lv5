@@ -1,0 +1,750 @@
+name: Mobile CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - release/*
+    paths:
+      - src/ios/**
+      - src/android/**
+      - .github/workflows/mobile.yml
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - src/ios/**
+      - src/android/**
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build (android, ios, or both)'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - android
+          - ios
+          - both
+      environment:
+        description: 'Deployment environment'
+        required: false
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '18.x'
+  PNPM_VERSION: '8.6.11'
+  JAVA_VERSION: '11'
+  RUBY_VERSION: '3.0'
+  GRADLE_VERSION: '7.6'
+  XCODE_VERSION: '14'
+  IOS_DEPLOYMENT_TARGET: '13.0'
+  ANDROID_COMPILE_SDK: '33'
+  ANDROID_MIN_SDK: '21'
+  ANDROID_TARGET_SDK: '33'
+  APP_CENTER_IOS_TOKEN: ${{ secrets.APP_CENTER_IOS_TOKEN }}
+  APP_CENTER_ANDROID_TOKEN: ${{ secrets.APP_CENTER_ANDROID_TOKEN }}
+  SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      platform: ${{ steps.determine_platform.outputs.platform }}
+      environment: ${{ steps.determine_environment.outputs.environment }}
+      ios_version: ${{ steps.get_ios_version.outputs.version }}
+      android_version: ${{ steps.get_android_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Determine platform
+        id: determine_platform
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "platform=${{ github.event.inputs.platform }}" >> $GITHUB_OUTPUT
+          else
+            echo "platform=both" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine environment
+        id: determine_environment
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/heads/release/* ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          else
+            echo "environment=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract iOS app version
+        id: get_ios_version
+        run: |
+          VERSION=$(grep -m1 '"version"' src/ios/package.json | cut -d '"' -f 4)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Extract Android app version
+        id: get_android_version
+        run: |
+          VERSION=$(grep -m1 '"version"' src/android/package.json | cut -d '"' -f 4)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  lint:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ios, android]
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ matrix.platform }}-${{ hashFiles('src/${{ matrix.platform }}/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ matrix.platform }}-
+
+      - name: Install dependencies
+        working-directory: src/${{ matrix.platform }}
+        run: pnpm install
+
+      - name: Run ESLint
+        working-directory: src/${{ matrix.platform }}
+        run: pnpm lint
+
+      - name: Run TypeScript type checking
+        working-directory: src/${{ matrix.platform }}
+        run: pnpm type-check
+
+  unit-test:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [ios, android]
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-${{ matrix.platform }}-${{ hashFiles('src/${{ matrix.platform }}/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ matrix.platform }}-
+
+      - name: Install dependencies
+        working-directory: src/${{ matrix.platform }}
+        run: pnpm install
+
+      - name: Run Jest tests
+        working-directory: src/${{ matrix.platform }}
+        run: pnpm test
+
+      - name: Upload test coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.platform }}-test-coverage
+          path: src/${{ matrix.platform }}/coverage
+          retention-days: 14
+
+      - name: Check coverage threshold
+        working-directory: src/${{ matrix.platform }}
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "Test coverage is below 80%: $COVERAGE%"
+            exit 1
+          fi
+
+  dependency-scan:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        platform: [ios, android]
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run Snyk dependency scanning
+        uses: snyk/actions/node@0.4.0
+        env:
+          SNYK_TOKEN: ${{ env.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high --sarif-file-output=snyk-${{ matrix.platform }}.sarif
+          command: test
+
+      - name: Generate vulnerability report
+        if: always()
+        run: |
+          if [ -f snyk-${{ matrix.platform }}.sarif ]; then
+            echo "Vulnerabilities found in ${{ matrix.platform }} dependencies"
+            jq -r '.runs[0].results | length' snyk-${{ matrix.platform }}.sarif
+          else
+            echo "No vulnerabilities found in ${{ matrix.platform }} dependencies"
+          fi
+
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.platform }}-vulnerability-report
+          path: snyk-${{ matrix.platform }}.sarif
+          retention-days: 30
+
+      - name: Fail if critical vulnerabilities found
+        if: always()
+        run: |
+          if [ -f snyk-${{ matrix.platform }}.sarif ]; then
+            CRITICAL_COUNT=$(jq -r '.runs[0].results[] | select(.properties.securitySeverity | tonumber >= 9) | .ruleId' snyk-${{ matrix.platform }}.sarif | wc -l)
+            if [ "$CRITICAL_COUNT" -gt 0 ]; then
+              echo "Found $CRITICAL_COUNT critical vulnerabilities. Pipeline failing."
+              exit 1
+            fi
+          fi
+
+  build-android:
+    needs: [lint, unit-test, dependency-scan]
+    if: needs.setup.outputs.platform == 'both' || needs.setup.outputs.platform == 'android'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-android-${{ hashFiles('src/android/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-android-
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('src/android/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Install dependencies
+        working-directory: src/android
+        run: pnpm install
+
+      - name: Create .env file
+        working-directory: src/android
+        run: |
+          ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+          echo "ENVIRONMENT=$ENVIRONMENT" > .env
+          echo "API_URL=${{ secrets[format('API_URL_{0}', needs.setup.outputs.environment)] }}" >> .env
+          echo "APP_VERSION=${{ needs.setup.outputs.android_version }}" >> .env
+
+      - name: Download keystore
+        if: needs.setup.outputs.environment == 'production' || needs.setup.outputs.environment == 'staging'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p src/android/android/app/keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > src/android/android/app/keystore/release.keystore
+
+      - name: Update version if needed
+        working-directory: src/android
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ]; then
+            # For production, ensure we update build number by incrementing the last part of semver
+            VERSION="${{ needs.setup.outputs.android_version }}"
+            BUILD_NUMBER=$(echo $VERSION | cut -d '.' -f 3)
+            NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+            NEW_VERSION=$(echo $VERSION | sed "s/\.[0-9]*$/.$NEW_BUILD_NUMBER/")
+            
+            # Update package.json
+            sed -i "s/\"version\": \"$VERSION\"/\"version\": \"$NEW_VERSION\"/" package.json
+            
+            # Update android build.gradle
+            sed -i "s/versionName \"$VERSION\"/versionName \"$NEW_VERSION\"/" android/app/build.gradle
+            
+            echo "Updated version from $VERSION to $NEW_VERSION"
+          fi
+
+      - name: Build Android app
+        working-directory: src/android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ] || [ "${{ needs.setup.outputs.environment }}" == "staging" ]; then
+            pnpm build:release
+          else
+            pnpm build:bundle
+          fi
+
+      - name: Upload APK/AAB artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-build
+          path: |
+            src/android/android/app/build/outputs/apk/release/*.apk
+            src/android/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
+
+      - name: Clean up secrets
+        if: always()
+        run: |
+          if [ -f src/android/android/app/keystore/release.keystore ]; then
+            rm -f src/android/android/app/keystore/release.keystore
+          fi
+
+  build-ios:
+    needs: [lint, unit-test, dependency-scan]
+    if: needs.setup.outputs.platform == 'both' || needs.setup.outputs.platform == 'ios'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-ios-${{ hashFiles('src/ios/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-ios-
+
+      - name: Cache CocoaPods dependencies
+        uses: actions/cache@v3
+        with:
+          path: src/ios/ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('src/ios/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install dependencies
+        working-directory: src/ios
+        run: pnpm install
+
+      - name: Install CocoaPods dependencies
+        working-directory: src/ios
+        run: pnpm pod-install
+
+      - name: Create .env file
+        working-directory: src/ios
+        run: |
+          ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+          echo "ENVIRONMENT=$ENVIRONMENT" > .env
+          echo "API_URL=${{ secrets[format('API_URL_{0}', needs.setup.outputs.environment)] }}" >> .env
+          echo "APP_VERSION=${{ needs.setup.outputs.ios_version }}" >> .env
+
+      - name: Install iOS certificates and provisioning profiles
+        if: needs.setup.outputs.environment == 'production' || needs.setup.outputs.environment == 'staging'
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
+        run: |
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+          
+          # Import certificate
+          echo "$CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$CERTIFICATE_PASSWORD" -A
+          
+          # Set up provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > provisioning_profile.mobileprovision
+          UUID=$(grep -a -A 1 "UUID" provisioning_profile.mobileprovision | grep -o "[-A-Za-z0-9]\{36\}")
+          cp provisioning_profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/"$UUID".mobileprovision
+          
+          # Clean up
+          rm certificate.p12 provisioning_profile.mobileprovision
+
+      - name: Update version and build number
+        working-directory: src/ios
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ]; then
+            # For production, ensure we update build number
+            VERSION="${{ needs.setup.outputs.ios_version }}"
+            BUILD_NUMBER=$(cd ios && /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "AITalentMarketplace/Info.plist")
+            NEW_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+            
+            # Update Info.plist
+            cd ios && /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD_NUMBER" "AITalentMarketplace/Info.plist"
+            cd ios && /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "AITalentMarketplace/Info.plist"
+            
+            echo "Updated build number from $BUILD_NUMBER to $NEW_BUILD_NUMBER"
+          fi
+
+      - name: Build iOS app
+        working-directory: src/ios
+        env:
+          EXPORT_OPTIONS_PLIST: ${{ secrets.IOS_EXPORT_OPTIONS_PLIST }}
+        run: |
+          # Determine build configuration based on environment
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ]; then
+            CONFIGURATION="Release"
+            EXPORT_METHOD="app-store"
+          elif [ "${{ needs.setup.outputs.environment }}" == "staging" ]; then
+            CONFIGURATION="Release"
+            EXPORT_METHOD="ad-hoc"
+          else
+            CONFIGURATION="Debug"
+            EXPORT_METHOD="development"
+          fi
+          
+          # Create export options plist
+          echo "$EXPORT_OPTIONS_PLIST" | base64 -d > exportOptions.plist
+          
+          # Build archive
+          xcodebuild -workspace ios/AITalentMarketplace.xcworkspace \
+            -scheme AITalentMarketplace \
+            -configuration $CONFIGURATION \
+            -archivePath AITalentMarketplace.xcarchive \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
+            clean archive
+          
+          # Export IPA
+          xcodebuild -exportArchive \
+            -archivePath AITalentMarketplace.xcarchive \
+            -exportPath ./build \
+            -exportOptionsPlist exportOptions.plist
+          
+          # Clean up
+          rm exportOptions.plist
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-build
+          path: src/ios/build/*.ipa
+          retention-days: 30
+
+      - name: Clean up certificates
+        if: always()
+        run: |
+          security delete-keychain build.keychain || true
+          rm -rf ~/Library/MobileDevice/Provisioning\ Profiles/* || true
+
+  e2e-test-android:
+    needs: [build-android]
+    runs-on: macos-latest
+    if: false  # Currently disabled as specified in the spec
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-android-${{ hashFiles('src/android/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-android-
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: android-build
+          path: android-build
+
+      - name: Install dependencies
+        working-directory: src/android
+        run: pnpm install
+
+      - name: Setup Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_TARGET_SDK }}
+          script: echo "Emulator started"
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+
+      - name: Run Detox E2E tests
+        working-directory: src/android
+        run: |
+          APP_PATH=$(find ../../android-build -name "*.apk" -type f | head -1)
+          pnpm e2e:test -- --configuration android.release --app $APP_PATH
+
+      - name: Upload test artifacts and screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-e2e-artifacts
+          path: |
+            src/android/artifacts
+            src/android/screenshots
+          retention-days: 14
+
+  e2e-test-ios:
+    needs: [build-ios]
+    runs-on: macos-latest
+    if: false  # Currently disabled as specified in the spec
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ env.RUBY_VERSION }}
+          bundler-cache: true
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pnpm-store
+          key: ${{ runner.os }}-pnpm-ios-${{ hashFiles('src/ios/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-ios-
+
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ios-build
+          path: ios-build
+
+      - name: Install dependencies
+        working-directory: src/ios
+        run: pnpm install
+
+      - name: Run Detox E2E tests
+        working-directory: src/ios
+        run: |
+          APP_PATH=$(find ../../ios-build -name "*.ipa" -type f | head -1)
+          pnpm e2e:test -- --configuration ios.release --app $APP_PATH
+
+      - name: Upload test artifacts and screenshots
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-e2e-artifacts
+          path: |
+            src/ios/artifacts
+            src/ios/screenshots
+          retention-days: 14
+
+  deploy-android:
+    needs: [build-android, e2e-test-android, setup]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (needs.setup.outputs.platform == 'both' || needs.setup.outputs.platform == 'android')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
+      url: https://appcenter.ms/orgs/ai-talent-marketplace/apps/AITalentMarketplace-Android
+    steps:
+      - name: Download APK/AAB artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: android-build
+          path: android-build
+
+      - name: Determine release group
+        id: release_group
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ]; then
+            echo "group=Production" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.setup.outputs.environment }}" == "staging" ]; then
+            echo "group=Staging" >> $GITHUB_OUTPUT
+          else
+            echo "group=Development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to App Center
+        uses: wzieba/AppCenter-Github-Action@v1
+        with:
+          appName: "ai-talent-marketplace/AITalentMarketplace-Android"
+          token: ${{ env.APP_CENTER_ANDROID_TOKEN }}
+          group: ${{ steps.release_group.outputs.group }}
+          file: android-build/$(find . -name "*.apk" -type f | head -1)
+          notifyTesters: true
+          releaseNotes: |
+            Android build for ${{ needs.setup.outputs.environment }} environment
+            Version: ${{ needs.setup.outputs.android_version }}
+            Commit: ${{ github.sha }}
+            Pipeline: ${{ github.workflow }}#${{ github.run_number }}
+
+      - name: Create GitHub release tag
+        if: needs.setup.outputs.environment == 'production'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `android-v${{ needs.setup.outputs.android_version }}`,
+              name: `Android Release v${{ needs.setup.outputs.android_version }}`,
+              body: `Android Production Release v${{ needs.setup.outputs.android_version }}`,
+              draft: false,
+              prerelease: false
+            })
+
+  deploy-ios:
+    needs: [build-ios, e2e-test-ios, setup]
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (needs.setup.outputs.platform == 'both' || needs.setup.outputs.platform == 'ios')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
+      url: https://appcenter.ms/orgs/ai-talent-marketplace/apps/AITalentMarketplace-iOS
+    steps:
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ios-build
+          path: ios-build
+
+      - name: Determine release group
+        id: release_group
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" == "production" ]; then
+            echo "group=Production" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.setup.outputs.environment }}" == "staging" ]; then
+            echo "group=Staging" >> $GITHUB_OUTPUT
+          else
+            echo "group=Development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to App Center
+        uses: wzieba/AppCenter-Github-Action@v1
+        with:
+          appName: "ai-talent-marketplace/AITalentMarketplace-iOS"
+          token: ${{ env.APP_CENTER_IOS_TOKEN }}
+          group: ${{ steps.release_group.outputs.group }}
+          file: ios-build/$(find . -name "*.ipa" -type f | head -1)
+          notifyTesters: true
+          releaseNotes: |
+            iOS build for ${{ needs.setup.outputs.environment }} environment
+            Version: ${{ needs.setup.outputs.ios_version }}
+            Commit: ${{ github.sha }}
+            Pipeline: ${{ github.workflow }}#${{ github.run_number }}
+
+      - name: Create GitHub release tag
+        if: needs.setup.outputs.environment == 'production'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `ios-v${{ needs.setup.outputs.ios_version }}`,
+              name: `iOS Release v${{ needs.setup.outputs.ios_version }}`,
+              body: `iOS Production Release v${{ needs.setup.outputs.ios_version }}`,
+              draft: false,
+              prerelease: false
+            })
