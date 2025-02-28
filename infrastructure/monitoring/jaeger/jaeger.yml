@@ -1,0 +1,171 @@
+# Jaeger distributed tracing configuration for AI Talent Marketplace
+# Version: jaegertracing/jaeger-operator:1.40.x
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: jaeger
+  namespace: monitoring
+spec:
+  strategy: production  # Production deployment strategy with separate components
+  allInOne:
+    enabled: false      # Disable all-in-one deployment for production use
+  
+  # Agent configuration - collects traces from applications
+  agent:
+    strategy: DaemonSet  # Deploy agent on every node
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "14271"
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    options:
+      log-level: info
+      reporter.grpc.host-port: jaeger-collector:14250
+  
+  # Collector configuration - receives and processes traces
+  collector:
+    replicas: 2  # Start with 2 replicas
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "14268"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    options:
+      log-level: info
+      collector.queue-size: "2000"
+      collector.num-workers: "50"
+    autoscale:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      metrics:
+        - type: Resource
+          resource:
+            name: cpu
+            target:
+              type: Utilization
+              averageUtilization: 80
+  
+  # Query service configuration - provides UI and API for trace retrieval
+  query:
+    replicas: 2
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "16686"
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    options:
+      log-level: info
+      query.base-path: /jaeger
+    serviceType: ClusterIP
+  
+  # Ingress configuration for external access
+  ingress:
+    enabled: true
+    security: oauth-proxy  # Use OAuth for UI security
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - jaeger.aitalentmarketplace.com
+    tls:
+      - secretName: jaeger-tls
+        hosts:
+          - jaeger.aitalentmarketplace.com
+  
+  # Storage configuration - using Elasticsearch for production
+  storage:
+    type: elasticsearch
+    options:
+      es.server-urls: https://elasticsearch:9200
+      es.username: ${ES_USERNAME}
+      es.password: ${ES_PASSWORD}
+      es.tls.enabled: "true"
+      es.tls.skip-host-verify: "false"
+      es.version: "7"
+      es.sniffer: "true"
+      es.max-span-age: 72h
+      es.max-doc-count: 10000
+      es.num-shards: 5
+      es.num-replicas: 1
+      es.index-prefix: jaeger
+    rollover:
+      readTTL: 168h  # 7 days retention
+      schedule: "0 0 * * *"  # Daily rollover
+  
+  # Sampling configuration - controls trace sampling rates
+  sampling:
+    options:
+      default_strategy:
+        type: probabilistic
+        param: 0.1  # Sample 10% of traces by default
+      service_strategies:
+        - service: api-gateway
+          type: probabilistic
+          param: 0.5  # Sample 50% of API gateway traces
+        - service: user-service
+          type: probabilistic
+          param: 0.3  # Sample 30% of user service traces
+        - service: job-service
+          type: probabilistic
+          param: 0.3  # Sample 30% of job service traces
+        - service: payment-service
+          type: probabilistic
+          param: 0.5  # Sample 50% of payment service traces
+        - service: collaboration-service
+          type: probabilistic
+          param: 0.3  # Sample 30% of collaboration service traces
+        - service: ai-service
+          type: probabilistic
+          param: 0.3  # Sample 30% of AI service traces
+      operation_strategies:
+        - service: api-gateway
+          operation: /api/v1/jobs
+          type: probabilistic
+          param: 0.25  # Sample 25% of job API requests
+        - service: payment-service
+          operation: /api/v1/payments
+          type: probabilistic
+          param: 0.75  # Sample 75% of payment API requests
+  
+  # Affinity rules for pod scheduling
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - collector
+                  - query
+          topologyKey: kubernetes.io/hostname
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-role.kubernetes.io/monitoring
+                operator: Exists
+  
+  # Tolerations for node taints
+  tolerations:
+    - key: node-role.kubernetes.io/monitoring
+      operator: Exists
+      effect: NoSchedule
