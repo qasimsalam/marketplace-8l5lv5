@@ -1,0 +1,310 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-service-config
+  namespace: ai-talent-marketplace
+  labels:
+    app: job-service
+    component: backend
+data:
+  config.yaml: |
+    # Job Service Configuration
+    app:
+      name: job-service
+      environment: production
+      debug: false
+      log_level: INFO
+    server:
+      host: 0.0.0.0
+      port: 8000
+      workers: 4
+      timeout: 60
+    database:
+      host: postgres
+      port: 5432
+      database: job_service
+      user: job_service_user
+      ssl_mode: require
+      pool_size: 20
+      max_overflow: 10
+      pool_timeout: 30
+    elasticsearch:
+      hosts: ["elasticsearch:9200"]
+      username: job-service
+      index_prefix: job_
+      timeout: 30
+      number_of_shards: 3
+      number_of_replicas: 1
+    ai:
+      openai_model: text-embedding-ada-002
+      embedding_dimension: 1536
+      similarity_threshold: 0.7
+    pagination:
+      default_page_size: 20
+      max_page_size: 100
+    features:
+      enable_ai_matching: true
+      enable_skill_verification: true
+      enable_job_recommendations: true
+    monitoring:
+      enable_prometheus: true
+      enable_tracing: true
+---
+# Secret for OpenAI API credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openai-credentials
+  namespace: ai-talent-marketplace
+type: Opaque
+data:
+  api-key: T1BFTkFJX0FQSV9LRVk=  # Placeholder base64 value, replace in production
+---
+# Deployment for Job Service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: job-service
+    component: backend
+    tier: service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: job-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: job-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+      - name: job-service
+        image: ai-talent-marketplace/job-service:1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: CONFIG_FILE_PATH
+          value: "/app/config/config.yaml"
+        - name: DB_HOST
+          value: postgres
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: job_service
+        - name: DB_USER
+          value: job_service_user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: job-service-password
+        - name: ES_HOSTS
+          value: elasticsearch:9200
+        - name: ES_USERNAME
+          value: job-service
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-credentials
+              key: job-service-password
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-credentials
+              key: api-key
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: ENABLE_AI_MATCHING
+          value: "true"
+        - name: WORKERS
+          value: "4"
+        resources:
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+        - name: tmp-volume
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /api/v1/jobs/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/v1/jobs/health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 2
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 1000
+          runAsGroup: 1000
+          readOnlyRootFilesystem: true
+      volumes:
+      - name: config-volume
+        configMap:
+          name: job-service-config
+      - name: tmp-volume
+        emptyDir: {}
+      securityContext:
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - job-service
+              topologyKey: "kubernetes.io/hostname"
+      terminationGracePeriodSeconds: 30
+---
+# Service to expose Job Service API
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: job-service
+    component: backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: job-service
+---
+# HorizontalPodAutoscaler for Job Service
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: job-service-hpa
+  namespace: ai-talent-marketplace
+  labels:
+    app: job-service
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: job-service
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+---
+# NetworkPolicy for Job Service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: job-service-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: job-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: elasticsearch
+    ports:
+    - protocol: TCP
+      port: 9200
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# PodDisruptionBudget for Job Service
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: job-service-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: job-service
