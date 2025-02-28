@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ colors.xml
+  ~ AI Talent Marketplace
+  ~ 
+  ~ This file defines the color resources used throughout the application.
+  ~ These colors are designed to maintain consistency with the web and iOS applications
+  ~ while adhering to Android platform standards.
+  ~
+  ~ Colors are WCAG 2.1 Level AA compliant for accessibility.
+  ~
+  ~ Note: Dark mode colors are primarily handled through AppCompat's DayNight theming system
+  ~ and defined in the appropriate theme files rather than directly here.
+  -->
+<resources>
+    <!-- Primary Colors -->
+    <color name="primary">#0ea5e9</color> <!-- Blue-500 -->
+    <color name="primary_light">#7dd3fc</color> <!-- Blue-300 -->
+    <color name="primary_dark">#0369a1</color> <!-- Blue-700 -->
+    
+    <!-- Secondary Colors -->
+    <color name="secondary">#8b5cf6</color> <!-- Purple-500 -->
+    <color name="secondary_light">#c4b5fd</color> <!-- Purple-300 -->
+    <color name="secondary_dark">#6d28d9</color> <!-- Purple-700 -->
+    
+    <!-- Accent Color -->
+    <color name="accent">#f97316</color> <!-- Orange-500 -->
+    
+    <!-- Semantic Colors -->
+    <color name="success">#22c55e</color> <!-- Green-500 -->
+    <color name="warning">#eab308</color> <!-- Yellow-500 -->
+    <color name="error">#ef4444</color> <!-- Red-500 -->
+    <color name="info">#0ea5e9</color> <!-- Blue-500 -->
+    
+    <!-- UI Colors -->
+    <color name="background">#ffffff</color> <!-- White -->
+    <color name="surface">#f9fafb</color> <!-- Gray-50 -->
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#111827</color> <!-- Gray-900 -->
+    <color name="text_secondary">#374151</color> <!-- Gray-700 -->
+    <color name="text_tertiary">#6b7280</color> <!-- Gray-500 -->
+    <color name="text_disabled">#9ca3af</color> <!-- Gray-400 -->
+    
+    <!-- Utility Colors -->
+    <color name="border">#e5e7eb</color> <!-- Gray-200 -->
+    <color name="status_bar">#0369a1</color> <!-- Matches primary_dark -->
+    <color name="navigation_bar">#0369a1</color> <!-- Matches primary_dark -->
+    <color name="white">#ffffff</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>
