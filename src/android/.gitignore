@@ -1,0 +1,94 @@
+*.apk
+*.aab
+*.ap_
+*.aar
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# Local configuration file
+local.properties
+
+# Android Studio
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+
+# Android Studio Navigation editor temp files
+.navigation/
+
+# Android Studio captures folder
+captures/
+
+# External native build folder
+.externalNativeBuild/
+.cxx/
+
+# React Native
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.pnp
+.pnp.js
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Keystore files
+*.jks
+*.keystore
+!debug.keystore
+
+# Bundle artifact
+*.jsbundle
+*.bundle
+index.android.bundle
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/assets/index.android.bundle.meta
+
+# Google Services
+google-services.json
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+coverage/
+__tests__/coverage/
+e2e/artifacts/
+
+# Hermes
+android/app/src/main/jni/prebuilt/
+
+# Temp files
+*.tmp
+*.swp
+*.swo
