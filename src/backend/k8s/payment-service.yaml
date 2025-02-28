@@ -1,0 +1,367 @@
+---
+# Payment Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: payment-service
+    component: backend
+    tier: service
+  annotations:
+    kubernetes.io/description: "Payment Service for processing payments, managing escrow, and integrating with Stripe"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4002"
+    spec:
+      containers:
+      - name: payment-service
+        image: ai-talent-marketplace/payment-service:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4002
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "4002"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: SERVICE_NAME
+          value: "payment-service"
+        - name: DB_HOST
+          value: "postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "payment_service"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: payment-service-password
+        - name: DB_POOL_SIZE
+          value: "10"
+        - name: REDIS_URL
+          value: "redis://redis:6379/0"
+        - name: CORS_ALLOWED_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: payment-service-config
+              key: CORS_ALLOWED_ORIGINS
+        - name: STRIPE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: stripe-api-key
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: stripe-webhook-secret
+        - name: STRIPE_ACCOUNT_TYPE
+          value: "express"
+        - name: ESCROW_HOLD_PERIOD_DAYS
+          value: "14"
+        - name: ESCROW_DISPUTE_WINDOW_DAYS
+          value: "7"
+        - name: ESCROW_AUTO_RELEASE_ENABLED
+          value: "true"
+        - name: PLATFORM_FEE_PERCENT
+          value: "15"
+        - name: PAYMENT_PROCESSING_FEE_PERCENT
+          value: "2.9"
+        - name: PAYMENT_PROCESSING_FEE_FLAT
+          value: "0.30"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: payment-service-secrets
+              key: jwt-secret
+        - name: USER_SERVICE_URL
+          value: "http://user-service:4000"
+        - name: JOB_SERVICE_URL
+          value: "http://job-service:8000"
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - payment-service
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 10
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - general
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+---
+# Payment Service Service (Kubernetes Service)
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: ai-talent-marketplace
+  labels:
+    app: payment-service
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4002
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: payment-service
+
+---
+# Payment Service HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service-hpa
+  namespace: ai-talent-marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Payment Service NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-service-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: payment-service
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    - podSelector:
+        matchLabels:
+          app: job-service
+    - podSelector:
+        matchLabels:
+          app: user-service
+    ports:
+    - protocol: TCP
+      port: 4002
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Payment Service PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-service-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: payment-service
+
+---
+# Payment Service ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: payment-service-config
+  namespace: ai-talent-marketplace
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "4002"
+  HOST: "0.0.0.0"
+  STRIPE_ACCOUNT_TYPE: "express"
+  ESCROW_HOLD_PERIOD_DAYS: "14"
+  ESCROW_DISPUTE_WINDOW_DAYS: "7"
+  ESCROW_AUTO_RELEASE_ENABLED: "true"
+  PLATFORM_FEE_PERCENT: "15"
+  PAYMENT_PROCESSING_FEE_PERCENT: "2.9"
+  PAYMENT_PROCESSING_FEE_FLAT: "0.30"
+  CORS_ALLOWED_ORIGINS: "https://aitalentmarketplace.com,https://www.aitalentmarketplace.com,https://app.aitalentmarketplace.com"
+
+---
+# Payment Service Secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: payment-service-secrets
+  namespace: ai-talent-marketplace
+type: Opaque
+data:
+  jwt-secret: YmFzZTY0X2VuY29kZWRfc2VjcmV0X2tleQ==
+  stripe-api-key: YmFzZTY0X2VuY29kZWRfc3RyaXBlX2FwaV9rZXk=
+  stripe-webhook-secret: YmFzZTY0X2VuY29kZWRfc3RyaXBlX3dlYmhvb2tfc2VjcmV0
+  aws-access-key-id: YmFzZTY0X2VuY29kZWRfYXdzX2FjY2Vzc19rZXlfaWQ=
+  aws-secret-access-key: YmFzZTY0X2VuY29kZWRfYXdzX3NlY3JldF9hY2Nlc3Nfa2V5
+
+---
+# Escrow Auto-Release CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: escrow-auto-release
+  namespace: ai-talent-marketplace
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: escrow-processor
+            image: ai-talent-marketplace/payment-service:latest
+            command: ["node", "dist/scripts/process-escrow-releases.js"]
+            env:
+            - name: NODE_ENV
+              value: "production"
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "payment_service"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: payment-service-password
+            - name: STRIPE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: payment-service-secrets
+                  key: stripe-api-key
+          restartPolicy: OnFailure
