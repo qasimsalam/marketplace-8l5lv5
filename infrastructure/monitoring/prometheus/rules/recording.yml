@@ -1,0 +1,311 @@
+# Prometheus Recording Rules for AI Talent Marketplace
+# Version: 1.0.0
+# Prometheus Version: 2.40.x
+#
+# This file defines recording rules that precompute frequently needed
+# or computationally expensive expressions for the AI Talent Marketplace
+# monitoring system. These rules optimize query performance and provide
+# aggregated metrics used by dashboards and alerts.
+
+groups:
+  # Service availability metrics
+  - name: service_availability
+    interval: 1m
+    rules:
+      # Average uptime for services in the last 5 minutes
+      - record: service:up:ratio:5m
+        expr: avg_over_time(up{namespace="ai-talent-marketplace"}[5m])
+        labels:
+          metric_type: availability
+      
+      # Ratio of available pods compared to desired replicas
+      - record: service:pods:available:ratio
+        expr: kube_deployment_status_replicas_available{namespace="ai-talent-marketplace"} / kube_deployment_spec_replicas{namespace="ai-talent-marketplace"}
+        labels:
+          metric_type: availability
+      
+      # Pod restart rate over the last hour
+      - record: service:pod:restart:rate:1h
+        expr: changes(kube_pod_container_status_restarts_total{namespace="ai-talent-marketplace"}[1h])
+        labels:
+          metric_type: availability
+
+  # Service performance metrics
+  - name: service_performance
+    interval: 1m
+    rules:
+      # Average request latency over 5 minutes
+      - record: service:request:latency:avg:5m
+        expr: rate(http_request_duration_seconds_sum{namespace="ai-talent-marketplace"}[5m]) / rate(http_request_duration_seconds_count{namespace="ai-talent-marketplace"}[5m])
+        labels:
+          metric_type: performance
+      
+      # 95th percentile request latency over 5 minutes
+      - record: service:request:latency:p95:5m
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="ai-talent-marketplace"}[5m])) by (le, service))
+        labels:
+          metric_type: performance
+      
+      # 99th percentile request latency over 5 minutes
+      - record: service:request:latency:p99:5m
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="ai-talent-marketplace"}[5m])) by (le, service))
+        labels:
+          metric_type: performance
+      
+      # Error ratio over 5 minutes (5xx status codes)
+      - record: service:request:error:ratio:5m
+        expr: sum(rate(http_requests_total{namespace="ai-talent-marketplace", status_code=~"5.."}[5m])) by (service) / sum(rate(http_requests_total{namespace="ai-talent-marketplace"}[5m])) by (service)
+        labels:
+          metric_type: performance
+      
+      # Request rate over 5 minutes by service
+      - record: service:request:rate:5m
+        expr: sum(rate(http_requests_total{namespace="ai-talent-marketplace"}[5m])) by (service)
+        labels:
+          metric_type: performance
+
+  # Resource usage metrics
+  - name: resource_usage
+    interval: 1m
+    rules:
+      # CPU usage percentage by pod and container
+      - record: service:cpu:usage:percent:5m
+        expr: sum(rate(container_cpu_usage_seconds_total{namespace="ai-talent-marketplace", container!="POD"}[5m])) by (pod, container) * 100
+        labels:
+          metric_type: resource
+      
+      # Memory usage percentage by pod and container
+      - record: service:memory:usage:percent:5m
+        expr: sum(container_memory_working_set_bytes{namespace="ai-talent-marketplace", container!="POD"}) by (pod, container) / sum(container_spec_memory_limit_bytes{namespace="ai-talent-marketplace", container!="POD"}) by (pod, container) * 100
+        labels:
+          metric_type: resource
+      
+      # Network receive rate by pod
+      - record: service:network:receive:bytes:rate:5m
+        expr: sum(rate(container_network_receive_bytes_total{namespace="ai-talent-marketplace"}[5m])) by (pod)
+        labels:
+          metric_type: resource
+      
+      # Network transmit rate by pod
+      - record: service:network:transmit:bytes:rate:5m
+        expr: sum(rate(container_network_transmit_bytes_total{namespace="ai-talent-marketplace"}[5m])) by (pod)
+        labels:
+          metric_type: resource
+      
+      # Node CPU usage percentage
+      - record: node:cpu:usage:percent:5m
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+        labels:
+          metric_type: resource
+      
+      # Node memory usage percentage
+      - record: node:memory:usage:percent
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100
+        labels:
+          metric_type: resource
+      
+      # Node disk usage percentage
+      - record: node:disk:usage:percent
+        expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"})
+        labels:
+          metric_type: resource
+
+  # Database metrics
+  - name: database_metrics
+    interval: 1m
+    rules:
+      # PostgreSQL connection usage percentage
+      - record: database:connections:percent:max
+        expr: max_over_time(pg_stat_database_numbackends{datname=~".*"}[5m]) / pg_settings_max_connections * 100
+        labels:
+          metric_type: database
+      
+      # PostgreSQL average read latency
+      - record: database:query:latency:avg:5m
+        expr: rate(pg_stat_database_blk_read_time{datname=~".*"}[5m]) / rate(pg_stat_database_blks_read{datname=~".*"}[5m])
+        labels:
+          metric_type: database
+      
+      # PostgreSQL average transaction latency
+      - record: database:transaction:latency:avg:5m
+        expr: rate(pg_stat_database_xact_commit_time{datname=~".*"}[5m]) / rate(pg_stat_database_xact_commit{datname=~".*"}[5m])
+        labels:
+          metric_type: database
+      
+      # PostgreSQL index scan ratio
+      - record: database:index:scan:ratio:5m
+        expr: sum(pg_stat_user_tables_idx_scan) by (datname) / (sum(pg_stat_user_tables_idx_scan) by (datname) + sum(pg_stat_user_tables_seq_scan) by (datname))
+        labels:
+          metric_type: database
+      
+      # Redis memory usage percentage
+      - record: redis:memory:usage:percent
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100
+        labels:
+          metric_type: database
+      
+      # Redis command rate
+      - record: redis:command:rate:5m
+        expr: rate(redis_commands_processed_total[5m])
+        labels:
+          metric_type: database
+      
+      # ElasticSearch cluster status (1=green, 2=yellow, 3=red)
+      - record: elasticsearch:cluster:status
+        expr: elasticsearch_cluster_health_status{color="green"} * 1 + elasticsearch_cluster_health_status{color="yellow"} * 2 + elasticsearch_cluster_health_status{color="red"} * 3
+        labels:
+          metric_type: database
+      
+      # ElasticSearch query rate
+      - record: elasticsearch:query:rate:5m
+        expr: rate(elasticsearch_indices_search_query_total[5m])
+        labels:
+          metric_type: database
+      
+      # ElasticSearch average query latency
+      - record: elasticsearch:query:latency:avg:5m
+        expr: rate(elasticsearch_indices_search_query_time_seconds[5m]) / rate(elasticsearch_indices_search_query_total[5m])
+        labels:
+          metric_type: database
+
+  # Security metrics
+  - name: security_metrics
+    interval: 1m
+    rules:
+      # Authentication failure rate
+      - record: security:auth:failure:rate:5m
+        expr: sum(rate(auth_failures_total{namespace="ai-talent-marketplace"}[5m])) by (service)
+        labels:
+          metric_type: security
+      
+      # Rate limit exceeded rate
+      - record: security:rate_limit:exceeded:rate:5m
+        expr: sum(rate(http_request_ratelimit_exceeded_total{namespace="ai-talent-marketplace"}[5m])) by (service, route)
+        labels:
+          metric_type: security
+      
+      # Suspicious IP request rate
+      - record: security:suspicious_ip:requests:rate:5m
+        expr: sum(rate(security_events_total{namespace="ai-talent-marketplace", type="suspicious_ip"}[5m])) by (service)
+        labels:
+          metric_type: security
+      
+      # Data access anomaly rate
+      - record: security:data_access:anomaly:rate:5m
+        expr: sum(rate(security_events_total{namespace="ai-talent-marketplace", type="data_access_anomaly"}[5m])) by (service)
+        labels:
+          metric_type: security
+      
+      # Invalid token rate
+      - record: security:token:invalid:rate:5m
+        expr: sum(rate(security_events_total{namespace="ai-talent-marketplace", type="invalid_token"}[5m])) by (service)
+        labels:
+          metric_type: security
+
+  # Business KPI metrics
+  - name: business_kpi
+    interval: 1h
+    rules:
+      # User registration rate per day
+      - record: business:user:registration:rate:per_day
+        expr: sum(increase(user_registrations_total{namespace="ai-talent-marketplace"}[1d]))
+        labels:
+          metric_type: business
+      
+      # Job posting rate per day
+      - record: business:job:posting:rate:per_day
+        expr: sum(increase(job_postings_total{namespace="ai-talent-marketplace"}[1d]))
+        labels:
+          metric_type: business
+      
+      # Job match success ratio
+      - record: business:job:match:success:ratio
+        expr: sum(job_matches_successful_total{namespace="ai-talent-marketplace"}) / sum(job_matches_total{namespace="ai-talent-marketplace"})
+        labels:
+          metric_type: business
+      
+      # Payment success ratio
+      - record: business:payment:success:ratio
+        expr: sum(payment_success_total{namespace="ai-talent-marketplace"}) / sum(payment_attempts_total{namespace="ai-talent-marketplace"})
+        labels:
+          metric_type: business
+      
+      # Average time to hire in days
+      - record: business:time_to_hire:avg:days
+        expr: sum(job_time_to_hire_seconds_sum{namespace="ai-talent-marketplace"}) / sum(job_time_to_hire_seconds_count{namespace="ai-talent-marketplace"}) / 86400
+        labels:
+          metric_type: business
+      
+      # Daily revenue
+      - record: business:revenue:daily
+        expr: sum(increase(payment_amount_total{namespace="ai-talent-marketplace", status="successful"}[1d]))
+        labels:
+          metric_type: business
+
+  # AI service metrics
+  - name: ai_service_metrics
+    interval: 1m
+    rules:
+      # Average embedding generation latency
+      - record: ai_service:embedding:generation:latency:avg
+        expr: sum(rate(ai_embedding_generation_duration_seconds_sum{namespace="ai-talent-marketplace"}[5m])) / sum(rate(ai_embedding_generation_duration_seconds_count{namespace="ai-talent-marketplace"}[5m]))
+        labels:
+          metric_type: ai
+      
+      # Embedding generation error ratio
+      - record: ai_service:embedding:error:ratio
+        expr: sum(rate(ai_embedding_generation_errors_total{namespace="ai-talent-marketplace"}[5m])) / sum(rate(ai_embedding_generation_attempts_total{namespace="ai-talent-marketplace"}[5m]))
+        labels:
+          metric_type: ai
+      
+      # Average recommendation latency
+      - record: ai_service:recommendation:latency:avg
+        expr: sum(rate(ai_recommendation_duration_seconds_sum{namespace="ai-talent-marketplace"}[5m])) / sum(rate(ai_recommendation_duration_seconds_count{namespace="ai-talent-marketplace"}[5m]))
+        labels:
+          metric_type: ai
+      
+      # Recommendation quality score
+      - record: ai_service:recommendation:quality:score
+        expr: avg(ai_recommendation_quality_score{namespace="ai-talent-marketplace"})
+        labels:
+          metric_type: ai
+      
+      # Average notebook cell execution latency
+      - record: collaboration_service:notebook:execution:latency:avg
+        expr: sum(rate(notebook_cell_execution_duration_seconds_sum{namespace="ai-talent-marketplace"}[5m])) / sum(rate(notebook_cell_execution_duration_seconds_count{namespace="ai-talent-marketplace"}[5m]))
+        labels:
+          metric_type: ai
+      
+      # Notebook cell execution error ratio
+      - record: collaboration_service:notebook:error:ratio
+        expr: sum(rate(notebook_cell_execution_errors_total{namespace="ai-talent-marketplace"}[5m])) / sum(rate(notebook_cell_execution_attempts_total{namespace="ai-talent-marketplace"}[5m]))
+        labels:
+          metric_type: ai
+
+  # API gateway metrics
+  - name: api_gateway_metrics
+    interval: 1m
+    rules:
+      # Request rate by route
+      - record: api_gateway:request:rate:by_route:5m
+        expr: sum(rate(http_requests_total{job="api-gateway"}[5m])) by (route)
+        labels:
+          metric_type: api_gateway
+      
+      # Error ratio by route
+      - record: api_gateway:request:error:ratio:by_route:5m
+        expr: sum(rate(http_requests_total{job="api-gateway", status_code=~"5.."}[5m])) by (route) / sum(rate(http_requests_total{job="api-gateway"}[5m])) by (route)
+        labels:
+          metric_type: api_gateway
+      
+      # 95th percentile latency by route
+      - record: api_gateway:request:latency:p95:by_route:5m
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m])) by (le, route))
+        labels:
+          metric_type: api_gateway
+      
+      # Rate limit hit ratio by limiter
+      - record: api_gateway:rate_limit:ratio:by_limiter:5m
+        expr: sum(rate(rate_limit_hits_total{job="api-gateway"}[5m])) by (limiter) / sum(rate(http_requests_total{job="api-gateway"}[5m]))
+        labels:
+          metric_type: api_gateway
