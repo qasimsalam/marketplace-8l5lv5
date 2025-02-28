@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+  ~ launch_screen.xml
+  ~ AI Talent Marketplace
+  ~ 
+  ~ This drawable defines the app's launch (splash) screen appearance.
+  ~ It displays the app logo centered on the branded primary background color,
+  ~ providing immediate visual feedback and brand recognition during app startup.
+  -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background layer using the primary brand color -->
+    <item android:drawable="@color/primary" />
+    
+    <!-- Centered logo layer -->
+    <item>
+        <bitmap
+            android:src="@mipmap/ic_launcher"
+            android:gravity="center" />
+    </item>
+</layer-list>
