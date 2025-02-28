@@ -1,0 +1,87 @@
+# This file defines ownership of different parts of the codebase and
+# automatically assigns relevant reviewers to pull requests.
+
+# Default owners for everything in the repository
+# Will be assigned for review on any PR that doesn't match a more specific rule
+* @project-lead @tech-architect
+
+# Backend shared libraries
+src/backend/shared/** @backend-team @shared-libraries-team
+
+# API Gateway service
+src/backend/api-gateway/** @backend-team @api-gateway-team 
+
+# User management service
+src/backend/user-service/** @backend-team @user-service-team
+
+# Job posting, matching and proposal service
+src/backend/job-service/** @backend-team @job-service-team
+
+# Payment processing service (with additional security oversight)
+src/backend/payment-service/** @backend-team @payment-service-team @security-team
+
+# AI and machine learning service
+src/backend/ai-service/** @backend-team @ai-team @ml-engineers
+
+# Real-time collaboration service
+src/backend/collaboration-service/** @backend-team @collaboration-team
+
+# Database migration scripts and schemas
+src/backend/db/** @backend-team @db-team
+
+# Web frontend application
+src/web/** @frontend-team
+
+# UI component library for web frontend
+src/web/src/components/** @frontend-team @ui-component-team
+
+# React hooks for web frontend
+src/web/src/hooks/** @frontend-team @frontend-architecture-team
+
+# Redux state management for web frontend
+src/web/src/store/** @frontend-team @state-management-team
+
+# iOS mobile application
+src/ios/** @mobile-team @ios-developers
+
+# Android mobile application
+src/android/** @mobile-team @android-developers
+
+# Infrastructure as code and deployment configurations
+infrastructure/** @devops-team @infrastructure-team
+
+# Security infrastructure configurations
+infrastructure/security/** @devops-team @security-team
+
+# Monitoring and observability configurations
+infrastructure/monitoring/** @devops-team @monitoring-team
+
+# CI/CD pipeline configurations
+.github/workflows/** @devops-team @ci-cd-team
+
+# GitHub-specific configurations and templates
+.github/** @devops-team @project-lead
+
+# SQL files across the repository
+**/*.sql @backend-team @db-team
+
+# Docker configuration files across the repository
+**/Dockerfile* @devops-team @containerization-team
+
+# Kubernetes configuration files across the repository
+**/k8s/** @devops-team @kubernetes-team
+
+# Package dependencies across the repository
+**/package.json @dependency-management-team
+
+# Security-related code and configurations across the repository
+**/security/** @security-team
+
+# Authentication and authorization code across the repository
+**/auth/** @auth-team @security-team
+
+# Test files across the repository
+**/tests/** @qa-team
+
+# Test files for React components and utilities
+**/__tests__/** @qa-team
