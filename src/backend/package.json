@@ -1,0 +1,77 @@
+{
+  "name": "ai-talent-marketplace-backend",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "api-gateway",
+    "user-service",
+    "payment-service"
+  ],
+  "scripts": {
+    "prepare": "husky install",
+    "build": "tsc --build",
+    "build:shared": "npm run build --workspace=shared",
+    "build:api-gateway": "npm run build --workspace=api-gateway",
+    "build:user-service": "npm run build --workspace=user-service",
+    "build:payment-service": "npm run build --workspace=payment-service",
+    "clean": "rimraf **/dist ./**/node_modules",
+    "clean:dist": "rimraf **/dist",
+    "dev": "concurrently \"npm run dev:api-gateway\" \"npm run dev:user-service\" \"npm run dev:payment-service\"",
+    "dev:api-gateway": "npm run dev --workspace=api-gateway",
+    "dev:user-service": "npm run dev --workspace=user-service",
+    "dev:payment-service": "npm run dev --workspace=payment-service",
+    "start": "concurrently \"npm run start:api-gateway\" \"npm run start:user-service\" \"npm run start:payment-service\"",
+    "start:api-gateway": "npm run start --workspace=api-gateway",
+    "start:user-service": "npm run start --workspace=user-service",
+    "start:payment-service": "npm run start --workspace=payment-service",
+    "test": "jest",
+    "test:unit": "jest --testPathIgnorePatterns=integration",
+    "test:integration": "jest --testMatch='**/integration/**/*.test.ts'",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint '**/*.ts'",
+    "lint:fix": "eslint '**/*.ts' --fix",
+    "format": "prettier --write '**/*.ts'",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build",
+    "docker:logs": "docker-compose logs -f",
+    "db:migrate": "cd db && ./run-migrations.sh",
+    "db:seed": "cd db && ./run-seeds.sh"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.2.1",
+    "@typescript-eslint/parser": "^6.2.1",
+    "concurrently": "^8.2.0",
+    "dotenv-cli": "^7.2.1",
+    "eslint": "^8.46.0",
+    "eslint-config-prettier": "^8.9.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "husky": "^8.0.3",
+    "jest": "^29.6.2",
+    "lint-staged": "^13.2.3",
+    "prettier": "^3.0.0",
+    "rimraf": "^5.0.1",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.1.6"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "jest": {
+    "projects": [
+      "<rootDir>/shared",
+      "<rootDir>/api-gateway",
+      "<rootDir>/user-service",
+      "<rootDir>/payment-service"
+    ]
+  },
+  "author": "AI Talent Marketplace Team",
+  "license": "UNLICENSED"
+}
