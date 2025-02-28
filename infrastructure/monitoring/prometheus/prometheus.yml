@@ -1,0 +1,389 @@
+# Prometheus Configuration for AI Talent Marketplace
+# Version: 1.0.0
+# Prometheus Version: 2.40.x
+# Alertmanager Version: 0.25.x
+# Node Exporter Version: 1.5.x
+# Kube State Metrics Version: 2.7.x
+
+# Global configuration settings
+global:
+  scrape_interval: 15s      # Set the scrape interval to every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  scrape_timeout: 10s       # Timeout after 10 seconds
+  # External labels for identifying this Prometheus instance
+  external_labels:
+    cluster: ai-talent-marketplace
+    environment: production
+
+# Rule files to load alerts and recording rules from
+rule_files:
+  - "rules/alerts.yml"
+  - "rules/recording.yml"
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - scheme: http
+      static_configs:
+        - targets: 
+          - "alertmanager:9093"
+      timeout: 5s
+      api_version: v2
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+
+  # Kubernetes API servers
+  - job_name: kubernetes-apiservers
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecure_skip_verify: false
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: endpoints
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+  # Kubernetes nodes
+  - job_name: kubernetes-nodes
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecure_skip_verify: false
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+  # Kubernetes pods
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+
+  # Kubernetes service endpoints
+  - job_name: kubernetes-service-endpoints
+    kubernetes_sd_configs:
+      - role: endpoints
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_service_name
+
+  # API Gateway
+  - job_name: api-gateway
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: api-gateway
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # User Service
+  - job_name: user-service
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: user-service
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # Job Service
+  - job_name: job-service
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: job-service
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # Payment Service
+  - job_name: payment-service
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: payment-service
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # Collaboration Service
+  - job_name: collaboration-service
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: collaboration-service
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # AI Service
+  - job_name: ai-service
+    metrics_path: /metrics
+    scrape_interval: 10s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: ai-service
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # PostgreSQL
+  - job_name: postgres
+    metrics_path: /metrics
+    scrape_interval: 30s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: postgres
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # Redis
+  - job_name: redis
+    metrics_path: /metrics
+    scrape_interval: 30s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: redis
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # ElasticSearch
+  - job_name: elasticsearch
+    metrics_path: /metrics
+    scrape_interval: 30s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: elasticsearch
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # MongoDB
+  - job_name: mongodb
+    metrics_path: /metrics
+    scrape_interval: 30s
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ["ai-talent-marketplace"]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: mongodb
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: instance
+
+  # Blackbox Exporter
+  - job_name: blackbox
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: 
+        - "blackbox-exporter:9115"
+
+  # HTTP probes using Blackbox Exporter
+  - job_name: blackbox-http
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - "https://api.aitalentmarketplace.com/health"
+        - "https://app.aitalentmarketplace.com"
+        - "https://www.aitalentmarketplace.com"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+
+# Remote write configuration for long-term storage via Thanos
+remote_write:
+  - url: "http://thanos-receiver:19291/api/v1/receive"
+    remote_timeout: 30s
+    queue_config:
+      capacity: 10000
+      max_shards: 200
+      min_shards: 1
+      max_samples_per_send: 2000
+      batch_send_deadline: 5s
+      min_backoff: 30ms
+      max_backoff: 5s
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: ".*:.*"
+        action: keep
+
+# TSDB storage configuration
+storage:
+  tsdb:
+    retention_time: 15d
+    min_block_duration: 2h
+    max_block_duration: 2h
