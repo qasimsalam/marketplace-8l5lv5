@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Application -->
+    <string name="app_name">AI Talent Marketplace</string>
+    <string name="action_settings">Settings</string>
+    
+    <!-- Launch Screen -->
+    <string name="launch_screen_title">AI Talent Marketplace</string>
+    <string name="launch_screen_subtitle">Connect with AI Professionals</string>
+    
+    <!-- Login Screen -->
+    <string name="login_title">Login</string>
+    <string name="login_email_hint">Email</string>
+    <string name="login_password_hint">Password</string>
+    <string name="login_button">Log In</string>
+    <string name="login_with_biometrics">Login with biometrics</string>
+    <string name="login_fingerprint">Login with fingerprint</string>
+    <string name="login_face">Login with Face ID</string>
+    <string name="remember_me">Remember me</string>
+    <string name="forgot_password">Forgot password?</string>
+    <string name="no_account">Don\'t have an account?</string>
+    <string name="register_prompt">Register</string>
+    
+    <!-- Registration Screen -->
+    <string name="register_title">Create Account</string>
+    <string name="register_name_hint">Full Name</string>
+    <string name="register_email_hint">Email</string>
+    <string name="register_password_hint">Password</string>
+    <string name="register_confirm_password_hint">Confirm Password</string>
+    <string name="register_button">Create Account</string>
+    <string name="register_account_type">Account Type</string>
+    <string name="register_freelancer">AI Professional</string>
+    <string name="register_client">Client</string>
+    <string name="have_account">Already have an account?</string>
+    <string name="login_prompt">Log In</string>
+    
+    <!-- Dashboard Screen -->
+    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_greeting_morning">Good morning</string>
+    <string name="dashboard_greeting_afternoon">Good afternoon</string>
+    <string name="dashboard_greeting_evening">Good evening</string>
+    <string name="dashboard_active_projects">Active Projects</string>
+    <string name="dashboard_notifications">Notifications</string>
+    <string name="dashboard_recent_activity">Recent Activity</string>
+    <string name="dashboard_recommended_jobs">Recommended Jobs</string>
+    <string name="view_all">View All</string>
+    
+    <!-- Jobs Screen -->
+    <string name="jobs_title">Jobs</string>
+    <string name="create_job">Create Job</string>
+    <string name="job_search_hint">Search for jobs...</string>
+    <string name="job_filter">Filter</string>
+    <string name="job_sort">Sort</string>
+    <string name="job_details">Job Details</string>
+    <string name="job_budget">Budget</string>
+    <string name="job_duration">Duration</string>
+    <string name="job_skills">Required Skills</string>
+    <string name="job_description">Description</string>
+    <string name="apply_now">Apply Now</string>
+    <string name="save_job">Save</string>
+    
+    <!-- Profile Screen -->
+    <string name="profile_title">Profile</string>
+    <string name="edit_profile">Edit Profile</string>
+    <string name="share_profile">Share Profile</string>
+    <string name="contact">Contact</string>
+    <string name="expertise_level">Expertise Level</string>
+    <string name="verification_status">Verification Status</string>
+    <string name="verified">Verified</string>
+    <string name="pending_verification">Pending verification</string>
+    <string name="skills">Skills</string>
+    <string name="portfolio_projects">Portfolio Projects</string>
+    <string name="github_projects">GitHub Projects</string>
+    <string name="kaggle_notebooks">Kaggle Notebooks</string>
+    <string name="research_papers">Research Papers</string>
+    <string name="download_cv">Download CV</string>
+    
+    <!-- Messages Screen -->
+    <string name="messages_title">Messages</string>
+    <string name="no_messages">No messages yet</string>
+    <string name="message_input_hint">Type a message...</string>
+    <string name="send">Send</string>
+    
+    <!-- Contracts Screen -->
+    <string name="contracts_title">Contracts</string>
+    
+    <!-- Workspace Screen -->
+    <string name="workspace_title">Workspace</string>
+    
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="logout">Log Out</string>
+    
+    <!-- Biometric Authentication -->
+    <string name="biometric_prompt_title">Biometric Authentication</string>
+    <string name="biometric_prompt_subtitle">Confirm your identity</string>
+    <string name="biometric_prompt_description">Please authenticate to continue</string>
+    <string name="biometric_prompt_cancel">Cancel</string>
+    
+    <!-- Error Messages -->
+    <string name="error_required_field">This field is required</string>
+    <string name="error_invalid_email">Please enter a valid email address</string>
+    <string name="error_password_length">Password must be at least 8 characters</string>
+    <string name="error_password_match">Passwords don\'t match</string>
+    <string name="error_network">Network error. Please check your connection and try again.</string>
+    <string name="error_authentication">Authentication failed. Please check your credentials and try again.</string>
+    <string name="error_unknown">An unknown error occurred. Please try again later.</string>
+    
+    <!-- Success Messages -->
+    <string name="success_login">Login successful</string>
+    <string name="success_registration">Registration successful</string>
+    <string name="success_profile_update">Profile updated successfully</string>
+    <string name="success_job_creation">Job posted successfully</string>
+    <string name="success_proposal_submission">Proposal submitted successfully</string>
+    
+    <!-- Loading States -->
+    <string name="loading">Loading...</string>
+    
+    <!-- Empty States -->
+    <string name="empty_state_jobs">No jobs found matching your criteria</string>
+    <string name="empty_state_notifications">No notifications yet</string>
+    <string name="empty_state_portfolio">No portfolio items added yet</string>
+    <string name="empty_state_contracts">No contracts yet</string>
+    <string name="empty_state_workspace">No active workspaces</string>
+    
+    <!-- Pull to Refresh -->
+    <string name="pull_to_refresh">Pull to refresh</string>
+    <string name="refreshing">Refreshing...</string>
+    
+    <!-- Sharing -->
+    <string name="share_via">Share via</string>
+    
+    <!-- Common Actions -->
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="close">Close</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="edit">Edit</string>
+</resources>
