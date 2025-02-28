@@ -1,0 +1,363 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: ai-talent-marketplace
+data:
+  elasticsearch.yml: |
+    # Elasticsearch Configuration
+    cluster.name: ai-talent-marketplace
+
+    # Node settings
+    node.master: true
+    node.data: true
+    node.ingest: true
+
+    # Network settings
+    network.host: 0.0.0.0
+
+    # Discovery settings
+    discovery.seed_hosts: ["elasticsearch-0.elasticsearch", "elasticsearch-1.elasticsearch", "elasticsearch-2.elasticsearch"]
+    cluster.initial_master_nodes: ["elasticsearch-0", "elasticsearch-1", "elasticsearch-2"]
+
+    # Path settings
+    path.data: /usr/share/elasticsearch/data
+    path.logs: /usr/share/elasticsearch/logs
+
+    # Memory settings
+    indices.memory.index_buffer_size: 30%
+    indices.queries.cache.size: 5%
+
+    # Performance settings
+    thread_pool.write.size: 4
+    thread_pool.search.size: 4
+
+    # Index settings
+    indices.recovery.max_bytes_per_sec: 50mb
+
+    # Security settings
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
+    xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+
+    # SearchGuard settings
+    searchguard.allow_unsafe_democertificates: true
+    searchguard.enable_snapshot_restore_privilege: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elasticsearch-credentials
+  namespace: ai-talent-marketplace
+type: Opaque
+data:
+  username: ZWxhc3RpYw==
+  password: Q2hhbmdlTWUhMjAyNA==
+  ai-service-password: YWktc2VydmljZS1wYXNzd29yZC0xMjM=
+  job-service-password: am9iLXNlcnZpY2UtcGFzc3dvcmQtMTIz
+  api-gateway-password: YXBpLWdhdGV3YXktcGFzc3dvcmQtMTIz
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: ai-talent-marketplace
+  labels:
+    app: elasticsearch
+    component: search
+    tier: data
+  annotations:
+    kubernetes.io/description: Elasticsearch search engine for AI Talent Marketplace
+spec:
+  serviceName: elasticsearch
+  replicas: 3
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.34
+          command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /usr/share/elasticsearch/data /usr/share/elasticsearch/logs
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+            - name: elasticsearch-logs
+              mountPath: /usr/share/elasticsearch/logs
+        - name: increase-vm-max-map
+          image: busybox:1.34
+          command:
+            - sysctl
+            - -w
+            - vm.max_map_count=262144
+          securityContext:
+            privileged: true
+      containers:
+        - name: elasticsearch
+          image: elasticsearch:8.10.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9200
+              name: http
+            - containerPort: 9300
+              name: transport
+          env:
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: cluster.name
+              value: ai-talent-marketplace
+            - name: discovery.seed_hosts
+              value: elasticsearch-0.elasticsearch,elasticsearch-1.elasticsearch,elasticsearch-2.elasticsearch
+            - name: cluster.initial_master_nodes
+              value: elasticsearch-0,elasticsearch-1,elasticsearch-2
+            - name: ES_JAVA_OPTS
+              value: -Xms4g -Xmx4g
+            - name: xpack.security.enabled
+              value: "true"
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-credentials
+                  key: password
+          resources:
+            limits:
+              cpu: "4000m"
+              memory: 8Gi
+            requests:
+              cpu: "2000m"
+              memory: 4Gi
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+            - name: elasticsearch-logs
+              mountPath: /usr/share/elasticsearch/logs
+            - name: elasticsearch-config
+              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              subPath: elasticsearch.yml
+          livenessProbe:
+            exec:
+              command:
+                - curl
+                - -s
+                - http://localhost:9200/_cluster/health
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - -s
+                - http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=10s
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: elasticsearch-config
+          configMap:
+            name: elasticsearch-config
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 120
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - elasticsearch
+                topologyKey: kubernetes.io/hostname
+  volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: gp3
+        resources:
+          requests:
+            storage: 100Gi
+    - metadata:
+        name: elasticsearch-logs
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: gp3
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: ai-talent-marketplace
+  labels:
+    app: elasticsearch
+    component: search
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9300
+      targetPort: transport
+      protocol: TCP
+      name: transport
+  selector:
+    app: elasticsearch
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: elasticsearch-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+        - podSelector:
+            matchLabels:
+              app: job-service
+        - podSelector:
+            matchLabels:
+              app: ai-service
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 9300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: elasticsearch
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-init-scripts
+  namespace: ai-talent-marketplace
+data:
+  create-indices.sh: |
+    #!/bin/bash
+
+    # Wait for Elasticsearch to be ready
+    until curl -s http://localhost:9200/_cluster/health?wait_for_status=yellow\&timeout=30s > /dev/null; do
+        echo 'Waiting for Elasticsearch to be ready...'
+        sleep 5
+    done
+
+    # Create jobs index with vector search mapping
+    curl -X PUT "http://localhost:9200/jobs" -H 'Content-Type: application/json' -d'
+    {
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "analysis": {
+          "analyzer": {
+            "skills_analyzer": {
+              "type": "custom",
+              "tokenizer": "standard",
+              "filter": ["lowercase", "stop", "snowball"]
+            }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "title": { "type": "text", "analyzer": "english", "fields": { "keyword": { "type": "keyword" } } },
+          "description": { "type": "text", "analyzer": "english" },
+          "skills": { "type": "text", "analyzer": "skills_analyzer", "fields": { "keyword": { "type": "keyword" } } },
+          "budget": { "type": "float" },
+          "rate_type": { "type": "keyword" },
+          "experience_level": { "type": "keyword" },
+          "location": { "type": "keyword" },
+          "duration": { "type": "integer" },
+          "availability": { "type": "keyword" },
+          "created_at": { "type": "date" },
+          "status": { "type": "keyword" },
+          "embedding": {
+            "type": "dense_vector",
+            "dims": 1536,
+            "index": true,
+            "similarity": "cosine"
+          }
+        }
+      }
+    }'
+
+    # Create profiles index with vector search mapping
+    curl -X PUT "http://localhost:9200/profiles" -H 'Content-Type: application/json' -d'
+    {
+      "settings": {
+        "number_of_shards": 3,
+        "number_of_replicas": 1,
+        "analysis": {
+          "analyzer": {
+            "skills_analyzer": {
+              "type": "custom",
+              "tokenizer": "standard",
+              "filter": ["lowercase", "stop", "snowball"]
+            }
+          }
+        }
+      },
+      "mappings": {
+        "properties": {
+          "id": { "type": "keyword" },
+          "name": { "type": "text", "fields": { "keyword": { "type": "keyword" } } },
+          "bio": { "type": "text", "analyzer": "english" },
+          "skills": { "type": "text", "analyzer": "skills_analyzer", "fields": { "keyword": { "type": "keyword" } } },
+          "experience_years": { "type": "integer" },
+          "rate": { "type": "float" },
+          "availability": { "type": "keyword" },
+          "location": { "type": "keyword" },
+          "certifications": { "type": "keyword" },
+          "education": { "type": "text" },
+          "languages": { "type": "keyword" },
+          "embedding": {
+            "type": "dense_vector",
+            "dims": 1536,
+            "index": true,
+            "similarity": "cosine"
+          }
+        }
+      }
+    }'
