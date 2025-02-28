@@ -1,0 +1,302 @@
+---
+# API Gateway Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: ai-talent-marketplace
+  labels:
+    app: api-gateway
+    component: backend
+    tier: gateway
+  annotations:
+    kubernetes.io/description: "API Gateway service that routes requests to backend microservices"
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "4000"
+    spec:
+      containers:
+      - name: api-gateway
+        image: ai-talent-marketplace/api-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "4000"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: api-gateway-config
+              key: CORS_ALLOWED_ORIGINS
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: api-gateway-secrets
+              key: jwt-secret
+        - name: JWT_EXPIRY
+          value: "15m"
+        - name: JWT_ALGORITHM
+          value: "RS256"
+        - name: JWT_ISSUER
+          value: "ai-talent-marketplace"
+        - name: JWT_AUDIENCE
+          value: "ai-talent-marketplace-api"
+        - name: REDIS_URL
+          value: "redis://redis:6379/0"
+        - name: RATE_LIMIT_WINDOW
+          value: "60000"
+        - name: RATE_LIMIT_MAX_REQUESTS
+          value: "100"
+        - name: USER_SERVICE_URL
+          value: "http://user-service:4000"
+        - name: JOB_SERVICE_URL
+          value: "http://job-service:8000"
+        - name: PAYMENT_SERVICE_URL
+          value: "http://payment-service:4002"
+        - name: COLLABORATION_SERVICE_URL
+          value: "http://collaboration-service:8000"
+        - name: AI_SERVICE_URL
+          value: "http://ai-service:8000"
+        resources:
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api-gateway
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 10
+            preference:
+              matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - general
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+---
+# API Gateway Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: ai-talent-marketplace
+  labels:
+    app: api-gateway
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: api-gateway
+---
+# API Gateway HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-gateway-hpa
+  namespace: ai-talent-marketplace
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-gateway
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# API Gateway NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-gateway-network-policy
+  namespace: ai-talent-marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: user-service
+    - podSelector:
+        matchLabels:
+          app: job-service
+    - podSelector:
+        matchLabels:
+          app: payment-service
+    - podSelector:
+        matchLabels:
+          app: collaboration-service
+    - podSelector:
+        matchLabels:
+          app: ai-service
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+# API Gateway PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: ai-talent-marketplace
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+# API Gateway ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: ai-talent-marketplace
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "4000"
+  HOST: "0.0.0.0"
+  JWT_EXPIRY: "15m"
+  JWT_ALGORITHM: "RS256"
+  JWT_ISSUER: "ai-talent-marketplace"
+  JWT_AUDIENCE: "ai-talent-marketplace-api"
+  RATE_LIMIT_WINDOW: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  PUBLIC_RATE_LIMIT: "100:1m"
+  AUTH_RATE_LIMIT: "1000:1m"
+  ADMIN_RATE_LIMIT: "5000:1m"
+  WEBHOOK_RATE_LIMIT: "10000:1m"
+  CORS_ALLOWED_ORIGINS: "https://aitalentmarketplace.com,https://www.aitalentmarketplace.com,https://app.aitalentmarketplace.com"
+---
+# API Gateway Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-gateway-ingress
+  namespace: ai-talent-marketplace
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - api.aitalentmarketplace.com
+    secretName: api-aitalentmarketplace-tls
+  rules:
+  - host: api.aitalentmarketplace.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway
+            port:
+              name: http
