@@ -1,0 +1,90 @@
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# CocoaPods
+ios/Pods/
+ios/.symlinks/
+ios/Podfile.lock
+
+# React Native
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.pnp
+.pnp.js
+
+# Build files
+build/
+ios/build/
+DerivedData/
+ios/Index/
+dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Generated files
+ios/Podfile.lock
+*.jsbundle
+*.jsbundle.map
+ios/assets/
+
+# Cache
+.eslintcache
+.babel.json
+
+# Test artifacts
+coverage/
+__tests__/coverage/
+e2e/artifacts/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Expo
+.expo/
+
+# TypeScript
+*.tsbuildinfo
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Detox
+e2e/artifacts/
+
+# Keychain
+*.keystore
+*.keys
+*.key
+*.mobileprovision
+*.p12
+*.cer
+
+# Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
