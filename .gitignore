@@ -1,0 +1,138 @@
+node_modules/
+.pnp
+.pnp.js
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+ENV/
+Pods/
+.symlinks/
+vendor/
+
+# Build output
+dist/
+build/
+.build/
+out/
+bin/
+.next/
+.vercel/
+public/sw.js
+public/workbox-*.js
+public/worker-*.js
+public/sw.js.map
+public/workbox-*.js.map
+public/worker-*.js.map
+*.jsbundle
+*.tsbuildinfo
+
+# TypeScript
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log
+
+# Docker & data
+db/data/
+db/mongodb/
+db/redis/
+db/elasticsearch/
+data/
+*/data/
+uploads/
+
+# Testing
+coverage/
+.nyc_output/
+cypress/videos/
+cypress/screenshots/
+.pytest_cache/
+.coverage
+htmlcov/
+e2e/artifacts/
+
+# Jupyter notebooks (except templates)
+**/*.ipynb
+!**/templates/*.ipynb
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE and editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+.project
+.classpath
+*.sublime-*
+
+# Cache
+.eslintcache
+.stylelintcache
+.babel.json
+.lerna-changelog
+
+# Certificates and keys
+*.pem
+*.p12
+*.cer
+*.key
+*.keystore
+*.jks
+!debug.keystore
+*.mobileprovision
+
+# Mobile specific
+# iOS
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+DerivedData/
+
+# Android
+*.apk
+*.aab
+*.dex
+*.class
+local.properties
+.gradle/
+.externalNativeBuild/
+.cxx/
+captures/
+google-services.json
+
+# Package managers
+package-lock.json
+
+# Bundler analyzing
+analyze/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+
+# Kubernetes
+kubeconfig
